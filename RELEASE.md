@@ -1,16 +1,16 @@
-# lwIP network interface integration library
+# NetXDuo network interface integration library
 
 ## What's iIncluded?
 
-See the [README.md](./README.md) for a complete description of the [lwIP network interface integration](https://github.com/Infineon/lwip-network-interface-integration) library.
+See the [README.md](./README.md) for a complete description of the [NetXDuo network interface integration](https://github.com/Infineon/netxduo-network-interface-integration) library.
 
 ## Changelog
 
 ### v1.0.0
 
-- Initial release for lwIP network interface integration library
+- Initial release for NetXDuo network interface integration library
 
-- Adds support for WiFi capability and Ethernet capability on lwIP TCP/IP stack
+- Adds support for WiFi capability capability on NetXDuo TCP/IP stack
 
 ### Supported software and tools
 
@@ -29,8 +29,8 @@ This version of the library was validated for compatibility with the following s
 
 ## Additional information
 
-- [lwIP network interface integration library README.md](./README.md)
+- [NetXDuo network interface integration library README.md](./README.md)
 
-- [lwIP network interface integration API reference guide](https://infineon.github.io/lwip-network-interface-integration/api_reference_manual/html/index.html)
+- [NetXDuo network interface integration API reference guide](https://infineon.github.io/netxduo-network-interface-integration/api_reference_manual/html/index.html)
 
 - [ModusToolbox&trade; software environment, quick start guide, documentation, and videos](https://www.infineon.com/cms/en/design-support/tools/sdk/modustoolbox-software/)
