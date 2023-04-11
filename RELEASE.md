@@ -6,6 +6,12 @@ See the [README.md](./README.md) for a complete description of the [NetXDuo netw
 
 ## Changelog
 
+### v1.1.0
+
+- Upgraded to netxduo v6.2.0_rel
+- Added true random number generation function
+- Updated DNS address retrieval from DHCP configuration
+
 ### v1.0.0
 
 - Initial release for NetXDuo network interface integration library

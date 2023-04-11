@@ -1,18 +1,34 @@
 /*
- * Copyright 2021 Cypress Semiconductor Corporation
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This software, including source code, documentation and related
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products.  Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 #include "cy_network_mw_core.h"
@@ -20,7 +36,6 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "cy_netxduo_error.h"
 #include "cy_wifimwcore_eapol.h"
 #include "cy_result.h"
 #include "cy_log.h"
@@ -29,7 +44,11 @@
 #include "nx_api.h"
 #include "nx_arp.h"
 #include "nxd_dhcp_client.h"
+
+#ifndef CY_NETWORK_DISABLE_DHCP_SERVER
 #include "nxd_dhcp_server.h"
+#endif
+
 #include "nxd_dns.h"
 #include "cy_wifimwcore_eapol.h"
 
@@ -37,6 +56,8 @@
 #include "whd_wifi_api.h"
 #include "whd_network_types.h"
 #include "whd_buffer_api.h"
+
+#include "cyhal.h"
 
 /******************************************************
  *                    Constants
@@ -112,8 +133,10 @@ static bool is_network_up(cy_network_hw_interface_type_t iface_type);
 static cy_rslt_t dhcp_client_init(cy_network_interface_context *iface, NX_PACKET_POOL *packet_pool);
 static cy_rslt_t dhcp_client_deinit(void);
 
+#ifndef CY_NETWORK_DISABLE_DHCP_SERVER
 static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET_POOL *packet_pool);
 static cy_rslt_t dhcp_server_deinit(void);
+#endif
 
 static cy_rslt_t dns_client_init(cy_network_interface_context *iface, NX_PACKET_POOL *packet_pool);
 static cy_rslt_t dns_client_deinit(void);
@@ -129,6 +152,7 @@ static char             wifi_sta_arp_cache[ARP_CACHE_SIZE];
 static NX_DHCP          wifi_sta_dhcp_handle;
 static bool             wifi_sta_dhcp_needed;
 static NX_DNS           wifi_sta_dns_handle;
+static cy_mutex_t       wifi_sta_dns_mutex;
 
 #ifdef NX_DNS_CACHE_ENABLE
 static UCHAR            wifi_sta_dns_local_cache[DNS_LOCAL_CACHE_SIZE];
@@ -137,8 +161,11 @@ static UCHAR            wifi_sta_dns_local_cache[DNS_LOCAL_CACHE_SIZE];
 static NX_IP            wifi_ap_ip_handle;
 static char             wifi_ap_ip_stack[IP_STACK_SIZE];
 static char             wifi_ap_arp_cache[ARP_CACHE_SIZE];
+
+#ifndef CY_NETWORK_DISABLE_DHCP_SERVER
 static NX_DHCP_SERVER   wifi_ap_dhcp_handle;
 static char             wifi_ap_dhcp_stack[NX_DHCP_SERVER_THREAD_STACK_SIZE];
+#endif
 
 static NX_IP *cy_nxd_ip_handle[MAX_NW_INTERFACE] =
 {
@@ -634,12 +661,14 @@ cy_rslt_t cy_network_add_nw_interface(cy_network_hw_interface_type_t iface_type,
 
 cy_rslt_t cy_network_remove_nw_interface(cy_network_interface_context *iface_context)
 {
-    NX_IP *ip_ptr = IP_HANDLE(iface_context->iface_type);
+    NX_IP *ip_ptr;
 
     if (is_interface_valid(iface_context) != CY_RSLT_SUCCESS)
     {
         return CY_RSLT_NETWORK_BAD_ARG;
     }
+
+    ip_ptr = IP_HANDLE(iface_context->iface_type);
 
     /* Interface can be removed only if the interface was previously added and network is down */
     if (!is_interface_added(iface_context->iface_type))
@@ -678,6 +707,7 @@ cy_rslt_t cy_network_remove_nw_interface(cy_network_interface_context *iface_con
     return CY_RSLT_SUCCESS;
 }
 
+#ifndef NX_DISABLE_IPV6
 cy_rslt_t cy_netxduo_autoipv6(cy_network_interface_context *iface_context)
 {
     UINT        ipv6_address_index;
@@ -725,6 +755,7 @@ cy_rslt_t cy_netxduo_autoipv6(cy_network_interface_context *iface_context)
 
     return CY_RSLT_SUCCESS;
 }
+#endif
 
 cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface_context)
 {
@@ -826,21 +857,25 @@ cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface_context)
             if (res != NX_SUCCESS)
             {
                 wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "ip_change: %d\n", res);
+                dhcp_client_deinit();
                 return CY_RSLT_TCPIP_ERROR;
             }
         }
         else
         {
+            dhcp_client_deinit();
             return CY_RSLT_TCPIP_ERROR;
         }
     }
     else if (iface_context->iface_type == CY_NETWORK_WIFI_AP_INTERFACE)
     {
+#ifndef CY_NETWORK_DISABLE_DHCP_SERVER
         if (dhcp_server_init(iface_context, whd_packet_pools) != CY_RSLT_SUCCESS)
         {
             wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Error starting DHCP server\n", res);
             return CY_RSLT_NETWORK_ERROR_STARTING_INTERNAL_DHCP;
         }
+#endif
     }
 #endif
 
@@ -854,19 +889,19 @@ cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface_context)
         if (res == NX_SUCCESS && wifi_sta_dhcp_needed)
         {
             NXD_ADDRESS addr;
-            UCHAR dns_ip[8];
+            ULONG dns_ip[3];
             UINT size = sizeof(dns_ip);
 
             /*
              * Get the DNS server address from DHCP.
              */
 
-            res = nx_dhcp_interface_user_option_retrieve(&wifi_sta_dhcp_handle, 0, NX_DHCP_OPTION_DNS_SVR, dns_ip, &size);
+            res = nx_dhcp_interface_user_option_retrieve(&wifi_sta_dhcp_handle, 0, NX_DHCP_OPTION_DNS_SVR, (UCHAR *)dns_ip, &size);
 
             if (res == NX_SUCCESS)
             {
                 addr.nxd_ip_version = NX_IP_VERSION_V4;
-                addr.nxd_ip_address.v4 = *((ULONG *)dns_ip);
+                addr.nxd_ip_address.v4 = dns_ip[0];
                 if (cy_netxduo_add_dns_server(iface_context->iface_type, &addr) != CY_RSLT_SUCCESS)
                 {
                     wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Error adding DNS server\n");
@@ -906,7 +941,9 @@ cy_rslt_t cy_network_ip_down(cy_network_interface_context *iface_context)
 
     if (iface_context->iface_type == CY_NETWORK_WIFI_AP_INTERFACE)
     {
+#ifndef CY_NETWORK_DISABLE_DHCP_SERVER
         dhcp_server_deinit();
+#endif
     }
 
     /*
@@ -1041,6 +1078,12 @@ static cy_rslt_t dhcp_client_init(cy_network_interface_context *iface, NX_PACKET
     if (res != NX_SUCCESS)
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "dhcp_start: %d\n", res);
+
+        nx_dhcp_delete(dhcp_handle);
+
+        /* Clear the DHCP handle structure */
+        memset(dhcp_handle, 0, sizeof(*dhcp_handle));
+
         return CY_RSLT_NETWORK_ERROR_STARTING_DHCP;
     }
 
@@ -1071,6 +1114,7 @@ static cy_rslt_t dhcp_client_deinit(void)
     return CY_RSLT_SUCCESS;
 }
 
+#ifndef CY_NETWORK_DISABLE_DHCP_SERVER
 static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET_POOL *packet_pool)
 {
     NX_IP *ip_handle = IP_HANDLE(iface->iface_type);
@@ -1125,12 +1169,22 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
     /* Check for errors creating the list. */
     if (res != NX_SUCCESS)
     {
+    	nx_dhcp_server_delete(dhcp_handle);
+
+        /* Clear the DHCP handle structure */
+        memset(dhcp_handle, 0, sizeof(*dhcp_handle));
+
         return CY_RSLT_NETWORK_ERROR_STARTING_INTERNAL_DHCP;
     }
 
     /* Verify all the addresses were added to the list. */
     if (addresses_added != DHCP_SERVER_MAX_NUM_CLIENTS)
     {
+    	nx_dhcp_server_delete(dhcp_handle);
+
+        /* Clear the DHCP handle structure */
+        memset(dhcp_handle, 0, sizeof(*dhcp_handle));
+
         return CY_RSLT_NETWORK_ERROR_STARTING_INTERNAL_DHCP;
     }
 
@@ -1144,6 +1198,11 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
     /* Check for errors setting network parameters. */
     if (res != NX_SUCCESS)
     {
+    	nx_dhcp_server_delete(dhcp_handle);
+
+        /* Clear the DHCP handle structure */
+        memset(dhcp_handle, 0, sizeof(*dhcp_handle));
+
         return CY_RSLT_NETWORK_ERROR_STARTING_INTERNAL_DHCP;
     }
 
@@ -1151,12 +1210,19 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
     res = nx_dhcp_server_start(dhcp_handle);
     if (res != NX_SUCCESS)
     {
+    	nx_dhcp_server_delete(dhcp_handle);
+
+        /* Clear the DHCP handle structure */
+        memset(dhcp_handle, 0, sizeof(*dhcp_handle));
+
         return CY_RSLT_NETWORK_ERROR_STARTING_INTERNAL_DHCP;
     }
 
     return CY_RSLT_SUCCESS;
 }
+#endif
 
+#ifndef CY_NETWORK_DISABLE_DHCP_SERVER
 static cy_rslt_t dhcp_server_deinit(void)
 {
     NX_DHCP_SERVER *dhcp_handle = &wifi_ap_dhcp_handle;
@@ -1180,6 +1246,7 @@ static cy_rslt_t dhcp_server_deinit(void)
 
     return CY_RSLT_SUCCESS;
 }
+#endif
 
 static cy_rslt_t dns_client_init(cy_network_interface_context *iface, NX_PACKET_POOL *packet_pool)
 {
@@ -1210,11 +1277,17 @@ static cy_rslt_t dns_client_init(cy_network_interface_context *iface, NX_PACKET_
     if (res != NX_SUCCESS)
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "nx_dns_packet_pool_set: 0x%02x\n", res);
+
         nx_dns_delete(dns_handle);
+
+        /* Clear the DNS handle structure */
+        memset(dns_handle, 0, sizeof(*dns_handle));
+
         return CY_RSLT_NETWORK_ERROR_STARTING_DNS;
     }
 #endif
 
+    cy_rtos_init_mutex(&wifi_sta_dns_mutex);
     return CY_RSLT_SUCCESS;
 }
 
@@ -1232,6 +1305,7 @@ static cy_rslt_t dns_client_deinit(void)
     /* Clear the DNS handle structure */
     memset(dns_handle, 0, sizeof(*dns_handle));
 
+    cy_rtos_deinit_mutex(&wifi_sta_dns_mutex);
     return CY_RSLT_SUCCESS;
 }
 
@@ -1290,7 +1364,9 @@ cy_rslt_t cy_network_get_hostbyname(cy_network_hw_interface_type_t iface_type, u
         return CY_RSLT_NETWORK_BAD_ARG;
     }
 
+    cy_rtos_get_mutex(&wifi_sta_dns_mutex, CY_RTOS_NEVER_TIMEOUT);
     res = nxd_dns_host_by_name_get(dns_handle, hostname, (NXD_ADDRESS *)ipaddr, NX_TIMEOUT(timeout), lookup_type);
+    cy_rtos_set_mutex(&wifi_sta_dns_mutex);
     if (res != NX_SUCCESS)
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Error looking up addr for %s: 0x%02x\n", hostname, res);
@@ -1699,3 +1775,52 @@ cy_rslt_t cy_network_deinit(void)
 {
     return CY_RSLT_SUCCESS;
 }
+
+#ifdef COMPONENT_CAT1
+static int trng_get_bytes(cyhal_trng_t *obj, uint8_t *output, size_t length, size_t *output_length)
+{
+    uint32_t offset = 0;
+    /* If output is not word-aligned, write partial word */
+    uint32_t prealign = (uint32_t)((uintptr_t)output % sizeof(uint32_t));
+    if(prealign != 0)
+    {
+        uint32_t value = cyhal_trng_generate(obj);
+        uint32_t count = sizeof(uint32_t) - prealign;
+        memmove(&output[0], &value, count);
+        offset += count;
+    }
+    /* Write aligned full words */
+    for(; offset < length - (sizeof(uint32_t) - 1u); offset += sizeof(uint32_t))
+    {
+        *(uint32_t *)(&output[offset]) = cyhal_trng_generate(obj);
+    }
+    /* Write partial trailing word if requested */
+    if(offset < length)
+    {
+        uint32_t value = cyhal_trng_generate(obj);
+        uint32_t count = length - offset;
+        memmove(&output[offset], &value, count);
+        offset += count;
+    }
+    *output_length = offset;
+    return 0;
+}
+
+/* True random number function for NetXDuo.
+ * In nx_user.h file NX_RAND is defined with cy_rand.
+ */
+UINT cy_rand( void )
+{
+    cyhal_trng_t obj;
+    UINT output;
+    size_t olen;
+
+    cyhal_trng_init(&obj);
+
+    trng_get_bytes(&obj, (uint8_t *)&output, sizeof(UINT), &olen);
+
+    cyhal_trng_free(&obj);
+
+    return output;
+}
+#endif

@@ -26,7 +26,7 @@
 /*  PORT SPECIFIC C INFORMATION                            RELEASE        */
 /*                                                                        */
 /*    nx_user.h                                           PORTABLE C      */
-/*                                                           6.1          */
+/*                                                           6.1.11       */
 /*                                                                        */
 /*  AUTHOR                                                                */
 /*                                                                        */
@@ -47,6 +47,11 @@
 /*  05-19-2020     Yuxin Zhou               Initial Version 6.0           */
 /*  09-30-2020     Yuxin Zhou               Modified comment(s),          */
 /*                                            resulting in version 6.1    */
+/*  08-02-2021     Yuxin Zhou               Modified comment(s), and      */
+/*                                            supported TCP/IP offload,   */
+/*                                            resulting in version 6.1.8  */
+/*  04-25-2022     Yuxin Zhou               Modified comment(s),          */
+/*                                            resulting in version 6.1.11 */
 /*                                                                        */
 /**************************************************************************/
 
@@ -333,7 +338,7 @@
 #define NX_ARP_DEFEND_BY_REPLY
 */
 
-/* To use the ARP collision hander to check for invalid ARP messages
+/* To use the ARP collision handler to check for invalid ARP messages
    matching existing entries in the table (man in the middle attack),
    enable this feature.  */
 /*
@@ -543,14 +548,14 @@
 
 /* Configuration options for checksum */
 
-/* Defiend, this option disables checksum logic on received ICMPv4 packets.
+/* Defined, this option disables checksum logic on received ICMPv4 packets.
    Note that if NX_DISABLE_ICMP_RX_CHECKSUM is defined, this option is
    automatically defined. By default this option is not defined.*/
 /*
 #define NX_DISABLE_ICMPV4_RX_CHECKSUM
 */
 
-/* Defiend, this option disables checksum logic on received ICMPv6 packets.
+/* Defined, this option disables checksum logic on received ICMPv6 packets.
    Note that if NX_DISABLE_ICMP_RX_CHECKSUM is defined, this option is
    automatically defined. By default this option is not defined.*/
 /*
@@ -564,14 +569,14 @@
 #define NX_DISABLE_ICMP_RX_CHECKSUM
 */
 
-/* Defiend, this option disables checksum logic on transmitted ICMPv4 packets.
+/* Defined, this option disables checksum logic on transmitted ICMPv4 packets.
    Note that if NX_DISABLE_ICMP_TX_CHECKSUM is defined, this option is
    automatically defined. By default this option is not defined.*/
 /*
 #define NX_DISABLE_ICMPV4_TX_CHECKSUM
 */
 
-/* Defiend, this option disables checksum logic on transmitted ICMPv6 packets.
+/* Defined, this option disables checksum logic on transmitted ICMPv6 packets.
    Note that if NX_DISABLE_ICMP_TX_CHECKSUM is defined, this option is
    automatically defined. By default this option is not defined.*/
 /*
@@ -774,6 +779,12 @@
 #define NX_MAX_STRING_LENGTH                                1024
 */
 
+/* Defined, the TCP/IP offload feature is enabled.
+   NX_ENABLE_INTERFACE_CAPABILITY must be defined to enable this feature.  */
+/*
+#define NX_ENABLE_TCPIP_OFFLOAD
+*/
+
 /*
  * Defines for addon components.
  */
@@ -786,6 +797,12 @@
  * It is the largest possible number of options a Client could request.
  */
 #define NX_DHCP_CLIENT_OPTIONS_MAX      50
+
+#ifdef COMPONENT_CAT1
+/* Defines random number function, default is C library's rand() function.*/
+UINT cy_rand( void );
+#define NX_RAND                         cy_rand
+#endif
 
 #endif
 
