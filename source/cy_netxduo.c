@@ -110,6 +110,8 @@
 #define STACK_FOR_IF(interface)         (cy_nxd_ip_stack[(interface) & 3])
 #define ARP_FOR_IF(interface)           (cy_nxd_arp_cache[(interface) & 3])
 
+#define ULONG_BUFFER_ROUNDUP(x)         (((x) + sizeof(ULONG) - 1) / sizeof(ULONG))
+
 #ifdef ENABLE_NETWORK_CORE_LOGS
 #define wm_cy_log_msg cy_log_msg
 #else
@@ -147,24 +149,24 @@ static cy_rslt_t cy_netxduo_add_dns_server(cy_network_hw_interface_type_t iface_
  ******************************************************/
 
 static NX_IP            wifi_sta_ip_handle;
-static char             wifi_sta_ip_stack[IP_STACK_SIZE];
-static char             wifi_sta_arp_cache[ARP_CACHE_SIZE];
+static ULONG            wifi_sta_ip_stack[ULONG_BUFFER_ROUNDUP(IP_STACK_SIZE)];
+static ULONG            wifi_sta_arp_cache[ULONG_BUFFER_ROUNDUP(ARP_CACHE_SIZE)];
 static NX_DHCP          wifi_sta_dhcp_handle;
 static bool             wifi_sta_dhcp_needed;
 static NX_DNS           wifi_sta_dns_handle;
 static cy_mutex_t       wifi_sta_dns_mutex;
 
 #ifdef NX_DNS_CACHE_ENABLE
-static UCHAR            wifi_sta_dns_local_cache[DNS_LOCAL_CACHE_SIZE];
+static ULONG            wifi_sta_dns_local_cache[ULONG_BUFFER_ROUNDUP(DNS_LOCAL_CACHE_SIZE)];
 #endif
 
 static NX_IP            wifi_ap_ip_handle;
-static char             wifi_ap_ip_stack[IP_STACK_SIZE];
-static char             wifi_ap_arp_cache[ARP_CACHE_SIZE];
+static ULONG            wifi_ap_ip_stack[ULONG_BUFFER_ROUNDUP(IP_STACK_SIZE)];
+static ULONG            wifi_ap_arp_cache[ULONG_BUFFER_ROUNDUP(ARP_CACHE_SIZE)];
 
 #ifndef CY_NETWORK_DISABLE_DHCP_SERVER
 static NX_DHCP_SERVER   wifi_ap_dhcp_handle;
-static char             wifi_ap_dhcp_stack[NX_DHCP_SERVER_THREAD_STACK_SIZE];
+static ULONG            wifi_ap_dhcp_stack[ULONG_BUFFER_ROUNDUP(NX_DHCP_SERVER_THREAD_STACK_SIZE)];
 #endif
 
 static NX_IP *cy_nxd_ip_handle[MAX_NW_INTERFACE] =
@@ -195,14 +197,14 @@ static void (* const cy_nxd_ip_driver_entries[MAX_NW_INTERFACE])(struct NX_IP_DR
 /* Network objects */
 static char *cy_nxd_ip_stack[MAX_NW_INTERFACE] =
 {
-    [CY_NETWORK_WIFI_STA_INTERFACE] = wifi_sta_ip_stack,
-    [CY_NETWORK_WIFI_AP_INTERFACE]  = wifi_ap_ip_stack,
+    [CY_NETWORK_WIFI_STA_INTERFACE] = (char *)wifi_sta_ip_stack,
+    [CY_NETWORK_WIFI_AP_INTERFACE]  = (char *)wifi_ap_ip_stack,
 };
 
 static char *cy_nxd_arp_cache[MAX_NW_INTERFACE] =
 {
-    [CY_NETWORK_WIFI_STA_INTERFACE] = wifi_sta_arp_cache,
-    [CY_NETWORK_WIFI_AP_INTERFACE]  = wifi_ap_arp_cache,
+    [CY_NETWORK_WIFI_STA_INTERFACE] = (char *)wifi_sta_arp_cache,
+    [CY_NETWORK_WIFI_AP_INTERFACE]  = (char *)wifi_ap_arp_cache,
 };
 
 
@@ -223,8 +225,8 @@ static char *cy_nxd_arp_cache[MAX_NW_INTERFACE] =
 #define RX_PACKET_POOL              (1)
 
 static NX_PACKET_POOL whd_packet_pools[NUM_PACKET_POOLS];  /* 0=TX/COM, 1=RX/Default */
-static uint8_t tx_buffer_pool_memory[APP_TX_BUFFER_POOL_SIZE];
-static uint8_t rx_buffer_pool_memory[APP_RX_BUFFER_POOL_SIZE];
+static ULONG tx_buffer_pool_memory[ULONG_BUFFER_ROUNDUP(APP_TX_BUFFER_POOL_SIZE)];
+static ULONG rx_buffer_pool_memory[ULONG_BUFFER_ROUNDUP(APP_RX_BUFFER_POOL_SIZE)];
 
 /******************************************************
  *               Function Definitions
@@ -686,6 +688,15 @@ cy_rslt_t cy_network_remove_nw_interface(cy_network_interface_context *iface_con
     /* Delete the network interface */
     if (ip_ptr->nx_ip_id == NX_IP_ID)
     {
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
+
         if (nx_ip_delete(IP_HANDLE(iface_context->iface_type)) != NX_SUCCESS)
         {
             wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Could not delete IP instance\n");
@@ -719,8 +730,34 @@ cy_rslt_t cy_netxduo_autoipv6(cy_network_interface_context *iface_context)
     /* Set the IPv6 linklocal address using our MAC */
     wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "Setting IPv6 link-local address\n");
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     nxd_ipv6_address_delete(IP_HANDLE(iface_context->iface_type), 0);
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     nxd_ipv6_enable(IP_HANDLE(iface_context->iface_type));
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     nxd_ipv6_address_set(IP_HANDLE(iface_context->iface_type), CY_NETWORK_PRIMARY_INTERFACE, NX_NULL, 10, &ipv6_address_index);
 
     /* Wait until the link-local address is properly advertised using network solicitation frame
@@ -734,6 +771,14 @@ cy_rslt_t cy_netxduo_autoipv6(cy_network_interface_context *iface_context)
 #ifdef ENABLE_NETWORK_CORE_LOGS
             uint16_t *ipv6 = (uint16_t *)ipv6_address.nxd_ip_address.v6;
 #endif
+            /*
+             * If LPA is enabled, invoke the activity callback to resume the network stack,
+             * before invoking the netxduo APIs
+             */
+            if (activity_callback)
+            {
+                activity_callback(true);
+            }
             nxd_ipv6_address_get(IP_HANDLE(iface_context->iface_type), ipv6_address_index, &ipv6_address, &ipv6_prefix, &ipv6_interface_index);
             wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "IPv6 network ready IP: %.4X:%.4X:%.4X:%.4X:%.4X:%.4X:%.4X:%.4X\n",
                           (unsigned int)(ipv6[1]), (unsigned int)(ipv6[0]), (unsigned int)(ipv6[3]),
@@ -749,6 +794,15 @@ cy_rslt_t cy_netxduo_autoipv6(cy_network_interface_context *iface_context)
     if (IP_HANDLE(iface_context->iface_type)->nx_ipv6_address[ipv6_address_index].nxd_ipv6_address_state != NX_IPV6_ADDR_STATE_VALID)
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "IPv6 network is not ready\n");
+
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
         nxd_ipv6_disable(IP_HANDLE(iface_context->iface_type));
         return CY_RSLT_TCPIP_ERROR;
     }
@@ -839,6 +893,15 @@ cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface_context)
             return CY_RSLT_NETWORK_ERROR_STARTING_INTERNAL_DHCP;
         }
 
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
+
         /* Check for address resolution and wait for our addresses to be ready */
         res = nx_ip_status_check(IP_HANDLE(iface_context->iface_type), NX_IP_ADDRESS_RESOLVED, (ULONG *)&status, DHCP_IP_ADDRESS_RESOLUTION_TIMEOUT);
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "ip: %d status:%X\n", res, status);
@@ -848,10 +911,26 @@ cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface_context)
             ULONG ip;
             ULONG netmask;
 
+            /*
+             * If LPA is enabled, invoke the activity callback to resume the network stack,
+             * before invoking the netxduo APIs
+             */
+            if (activity_callback)
+            {
+                activity_callback(true);
+            }
             nx_ip_address_get(IP_HANDLE(iface_context->iface_type), &ip, &netmask);
             wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "=======================================\n");
             wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "IPv4: %u.%u.%u.%u  netmask: %u.%u.%u.%u\n", PRINT_HOST_IP(ip), PRINT_HOST_IP(netmask));
 
+            /*
+             * If LPA is enabled, invoke the activity callback to resume the network stack,
+             * before invoking the netxduo APIs
+             */
+            if (activity_callback)
+            {
+                activity_callback(true);
+            }
             /* Register a handler for any address changes */
             res = nx_ip_address_change_notify(IP_HANDLE(iface_context->iface_type), internal_ip_change_callback, iface_context);
             if (res != NX_SUCCESS)
@@ -1004,6 +1083,15 @@ cy_rslt_t cy_network_dhcp_renew(cy_network_interface_context *iface_context)
         return CY_RSLT_NETWORK_BAD_ARG;
     }
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     /* Invalidate ARP entries */
     _nx_arp_interface_entries_delete(IP_HANDLE(iface_context->iface_type), 0);
 
@@ -1063,6 +1151,15 @@ static cy_rslt_t dhcp_client_init(cy_network_interface_context *iface, NX_PACKET
     /* clear DHCP info to start */
     memset(dhcp_handle, 0, sizeof(*dhcp_handle));
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     /* Create the DHCP instance. */
     res = nx_dhcp_create(dhcp_handle, ip_handle, "CY WHD");
     if (res != NX_SUCCESS)
@@ -1073,12 +1170,28 @@ static cy_rslt_t dhcp_client_init(cy_network_interface_context *iface, NX_PACKET
 
     nx_dhcp_packet_pool_set(dhcp_handle, packet_pool);
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     /* Start DHCP. */
     res = nx_dhcp_start(dhcp_handle);
     if (res != NX_SUCCESS)
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "dhcp_start: %d\n", res);
 
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
         nx_dhcp_delete(dhcp_handle);
 
         /* Clear the DHCP handle structure */
@@ -1100,12 +1213,28 @@ static cy_rslt_t dhcp_client_deinit(void)
         return CY_RSLT_SUCCESS;
     }
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     res = nx_dhcp_stop(dhcp_handle);
     if ((res != NX_SUCCESS) && (res != NX_DHCP_NOT_STARTED))
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_WARNING, "Failed to stop DHCP client\n");
      }
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     nx_dhcp_delete(dhcp_handle);
 
     /* Clear the DHCP handle structure */
@@ -1128,6 +1257,15 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
 
     /* clear DHCP info to start */
     memset(dhcp_handle, 0, sizeof(*dhcp_handle));
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
 
     /*
      * Get the IP address and netmask.
@@ -1154,6 +1292,14 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
     start_address += 1;
     end_address = start_address + DHCP_SERVER_MAX_NUM_CLIENTS - 1;
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     /* Create the DHCP Server.  */
     res = nx_dhcp_server_create(dhcp_handle, ip_handle, wifi_ap_dhcp_stack, NX_DHCP_SERVER_THREAD_STACK_SIZE, "CY DHCP Server", packet_pool);
 
@@ -1169,7 +1315,15 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
     /* Check for errors creating the list. */
     if (res != NX_SUCCESS)
     {
-    	nx_dhcp_server_delete(dhcp_handle);
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
+        nx_dhcp_server_delete(dhcp_handle);
 
         /* Clear the DHCP handle structure */
         memset(dhcp_handle, 0, sizeof(*dhcp_handle));
@@ -1180,7 +1334,15 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
     /* Verify all the addresses were added to the list. */
     if (addresses_added != DHCP_SERVER_MAX_NUM_CLIENTS)
     {
-    	nx_dhcp_server_delete(dhcp_handle);
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
+        nx_dhcp_server_delete(dhcp_handle);
 
         /* Clear the DHCP handle structure */
         memset(dhcp_handle, 0, sizeof(*dhcp_handle));
@@ -1198,7 +1360,15 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
     /* Check for errors setting network parameters. */
     if (res != NX_SUCCESS)
     {
-    	nx_dhcp_server_delete(dhcp_handle);
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
+        nx_dhcp_server_delete(dhcp_handle);
 
         /* Clear the DHCP handle structure */
         memset(dhcp_handle, 0, sizeof(*dhcp_handle));
@@ -1206,11 +1376,27 @@ static cy_rslt_t dhcp_server_init(cy_network_interface_context *iface, NX_PACKET
         return CY_RSLT_NETWORK_ERROR_STARTING_INTERNAL_DHCP;
     }
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     /* Start DHCP Server task.  */
     res = nx_dhcp_server_start(dhcp_handle);
     if (res != NX_SUCCESS)
     {
-    	nx_dhcp_server_delete(dhcp_handle);
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
+        nx_dhcp_server_delete(dhcp_handle);
 
         /* Clear the DHCP handle structure */
         memset(dhcp_handle, 0, sizeof(*dhcp_handle));
@@ -1233,12 +1419,29 @@ static cy_rslt_t dhcp_server_deinit(void)
         return CY_RSLT_SUCCESS;
     }
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     res = nx_dhcp_server_stop(dhcp_handle);
     if ((res != NX_SUCCESS) && (res != NX_DHCP_SERVER_NOT_STARTED))
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_WARNING, "Failed to stop DHCP server\n");
      }
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     nx_dhcp_server_delete(dhcp_handle);
 
     /* Clear the DHCP handle structure */
@@ -1257,6 +1460,14 @@ static cy_rslt_t dns_client_init(cy_network_interface_context *iface, NX_PACKET_
     /* clear DHCP info to start */
     memset(dns_handle, 0, sizeof(*dns_handle));
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
     res = nx_dns_create(dns_handle, ip_handle, (UCHAR *)"DNS Client");
     if (res != NX_SUCCESS)
     {
@@ -1278,6 +1489,14 @@ static cy_rslt_t dns_client_init(cy_network_interface_context *iface, NX_PACKET_
     {
         wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "nx_dns_packet_pool_set: 0x%02x\n", res);
 
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
         nx_dns_delete(dns_handle);
 
         /* Clear the DNS handle structure */
@@ -1298,6 +1517,15 @@ static cy_rslt_t dns_client_deinit(void)
     if (dns_handle->nx_dns_id != NX_DNS_ID)
     {
         return CY_RSLT_SUCCESS;
+    }
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
     }
 
     nx_dns_delete(dns_handle);
@@ -1365,6 +1593,16 @@ cy_rslt_t cy_network_get_hostbyname(cy_network_hw_interface_type_t iface_type, u
     }
 
     cy_rtos_get_mutex(&wifi_sta_dns_mutex, CY_RTOS_NEVER_TIMEOUT);
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     res = nxd_dns_host_by_name_get(dns_handle, hostname, (NXD_ADDRESS *)ipaddr, NX_TIMEOUT(timeout), lookup_type);
     cy_rtos_set_mutex(&wifi_sta_dns_mutex);
     if (res != NX_SUCCESS)
@@ -1459,6 +1697,16 @@ cy_rslt_t cy_network_get_ip_address(cy_network_interface_context *iface_context,
 
     memset(ip_addr, 0, sizeof(cy_nw_ip_address_t));
     net_interface = IP_HANDLE(iface_context->iface_type);
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     if (nx_ip_address_get(net_interface, &ipv4_addr, &netmask) == NX_SUCCESS)
     {
         ip_addr->version = NW_IP_IPV4;
@@ -1515,6 +1763,15 @@ cy_rslt_t cy_network_get_ipv6_address(cy_network_interface_context *iface_contex
     address_index = 0;
     net_interface = IP_HANDLE(iface_context->iface_type);
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     if (nxd_ipv6_address_get(net_interface, address_index, &ipv6_addr, &prefix_length, &interface_index) == NX_SUCCESS)
     {
         ip_addr->version = NW_IP_IPV6;
@@ -1563,6 +1820,16 @@ cy_rslt_t cy_network_get_gateway_ip_address(cy_network_interface_context *iface_
     memset(gateway_addr, 0, sizeof(cy_nw_ip_address_t));
 
     net_interface = IP_HANDLE(iface_context->iface_type);
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     if (nx_ip_gateway_address_get(net_interface, &ipv4_addr) == NX_SUCCESS)
     {
         gateway_addr->version = NW_IP_IPV4;
@@ -1620,10 +1887,27 @@ cy_rslt_t cy_network_get_gateway_mac_address(cy_network_interface_context *iface
         return CY_RSLT_NETWORK_INTERFACE_DOES_NOT_EXIST;
     }
 
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     nx_ip_gateway_address_get(net_interface, &ipv4_addr);
 
     if (nx_arp_hardware_address_find(net_interface, ipv4_addr, &physical_msw, &physical_lsw) != NX_SUCCESS)
     {
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
         /* Entry for the address is not present in the ARP cache. Sent ARP request.*/
         err = _nx_arp_dynamic_entry_set(net_interface, ipv4_addr, 0, 0);
         if (err != NX_SUCCESS)
@@ -1632,6 +1916,14 @@ cy_rslt_t cy_network_get_gateway_mac_address(cy_network_interface_context *iface
             return CY_RSLT_NETWORK_ARP_REQUEST_FAILURE;
         }
 
+        /*
+         * If LPA is enabled, invoke the activity callback to resume the network stack,
+         * before invoking the netxduo APIs
+         */
+        if (activity_callback)
+        {
+            activity_callback(true);
+        }
         do
         {
             if (nx_arp_hardware_address_find(net_interface, ipv4_addr, &physical_msw, &physical_lsw) == NX_SUCCESS)
@@ -1689,6 +1981,16 @@ cy_rslt_t cy_network_get_netmask_address(cy_network_interface_context *iface_con
 
     memset(net_mask_addr, 0, sizeof(cy_nw_ip_address_t));
     net_interface = IP_HANDLE(iface_context->iface_type);
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
+
     nx_ip_address_get(net_interface, &ipv4_addr, &netmask);
 
     net_mask_addr->version = NW_IP_IPV4;
@@ -1738,6 +2040,15 @@ cy_rslt_t cy_network_ping(cy_network_interface_context *iface_context, cy_nw_ip_
 
     /* Record time ping was sent */
     cy_rtos_get_time(&send_time);
+
+    /*
+     * If LPA is enabled, invoke the activity callback to resume the network stack,
+     * before invoking the netxduo APIs
+     */
+    if (activity_callback)
+    {
+        activity_callback(true);
+    }
 
     /* Send the ping */
     err = nx_icmp_ping(net_interface, ntohl(address->ip.v4), "abcd", 4, &response_ptr, timeout_ms);
