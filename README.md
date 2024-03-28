@@ -18,7 +18,6 @@ This library and its features are supported on the following platforms:
 
 - [PSoC&trade; 62S2 evaluation kit (CY8CEVAL-062S2-MUR-43439M2)](https://www.cypress.com/documentation/development-kitsboards/psoc-62s2-evaluation-kit-cy8ceval-062s2)
 
-
 ## Log messages
 
 By default, the NetXDuo network interface integration library disables all debug log messages. Do the following to enable log messages:
