@@ -1229,6 +1229,24 @@ cy_rslt_t cy_network_activity_notify(cy_network_activity_type_t activity_type)
 }
 
 #ifndef NX_DISABLE_IPV4
+
+void *cy_network_get_dhcp_handle(cy_network_hw_interface_type_t iface_type, uint8_t iface_idx)
+{
+    if ((iface_type != CY_NETWORK_WIFI_STA_INTERFACE) && (iface_type != CY_NETWORK_WIFI_AP_INTERFACE))
+    {
+        return NULL;
+    }
+    if (!is_interface_added(iface_type))
+    {
+        return NULL;
+    }
+    if(wifi_sta_dhcp_needed == false)
+    {
+        return NULL;
+    }
+    return (&wifi_sta_dhcp_handle);
+}
+
 cy_rslt_t cy_network_dhcp_renew(cy_network_interface_context *iface_context)
 {
     NX_DHCP *dhcp_handle = &wifi_sta_dhcp_handle;

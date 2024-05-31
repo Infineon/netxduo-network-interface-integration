@@ -249,6 +249,18 @@ cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface_context);
  */
 cy_rslt_t cy_network_ip_down(cy_network_interface_context *iface_context);
 
+/** \cond INTERNAL*/
+/**
+ * This function returns the DHCP handle.
+ *
+ * @param[in] iface_type      Network interface type.
+ * @param[in] iface_idx       Network interface index.
+ *
+ * @return Returns a valid DHCP handle or NULL if it is not initialized.
+ */
+void *cy_network_get_dhcp_handle(cy_network_hw_interface_type_t iface_type, uint8_t iface_idx);
+/** \endcond */
+
 /**
  * This function invalidates all the ARP entries and renews the DHCP.
  *

@@ -11,6 +11,10 @@ See the [README.md](./README.md) for a complete description of the [NetXDuo netw
 
 ## Changelog
 
+### v1.3.0
+
+- Added support for CYW955913EVK-01 kit.
+
 ### v1.2.0
 
 - Added support for IOCTL buffers greater than MTU size.
