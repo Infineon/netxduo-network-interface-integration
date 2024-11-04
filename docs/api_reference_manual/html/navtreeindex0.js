@@ -58,6 +58,7 @@ var NAVTREEINDEX0 =
 "group__group__netxduo__network__interface__integration__functions.html#gabf2995f3fe153eba71d52981886cf5f9":[1,0,2,4],
 "group__group__netxduo__network__interface__integration__functions.html#gac0882cbd33e9886b2b24152fe85a57f6":[1,0,2,12],
 "group__group__netxduo__network__interface__integration__functions.html#gacafba46ba65d3b82abaeeb4897cfda78":[1,0,2,16],
+"group__group__netxduo__network__interface__integration__functions.html#gadffd5b457b63e0f237d37c37360d3b7b":[1,0,2,21],
 "group__group__netxduo__network__interface__integration__functions.html#gae498113a5148caeb895ebc5d67fd41c8":[1,0,2,13],
 "group__group__netxduo__network__interface__integration__functions.html#gaf0555791a8850099ace2f3735d4f8c55":[1,0,2,6],
 "group__group__netxduo__network__interface__integration__functions.html#gaf414d396ecdb54b41b2b0fdd65e6afef":[1,0,2,5],

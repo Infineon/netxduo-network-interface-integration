@@ -11,6 +11,12 @@ See the [README.md](./README.md) for a complete description of the [NetXDuo netw
 
 ## Changelog
 
+### v1.4.0
+
+- Update to speed up DHCP processing.
+- Added cy_create_ip_instance API to allow creating IP instance without bringing up full network stack.
+- Updated .cyignore to support PKCS11.
+
 ### v1.3.0
 
 - Added support for CYW955913EVK-01 kit.

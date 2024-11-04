@@ -217,6 +217,11 @@ bool ip_up[MAX_NW_INTERFACE];
 bool ip_services_enabled[MAX_NW_INTERFACE];
 #define SET_IP_SERVICES_ENABLED(interface, status)  (ip_services_enabled[(interface)&3] = status)
 
+/* IP instance created via cy_create_ip_instance API */
+static bool ip_instance_created[MAX_NW_INTERFACE];
+#define SET_IP_INSTANCE_CREATED(interface, status)  (ip_instance_created[(interface)&3] = status)
+#define GET_IP_INSTANCE_CREATED(interface)          (ip_instance_created[(interface)&3])
+
 static cy_network_activity_event_callback_t activity_callback;
 static cy_wifimwcore_eapol_packet_handler_t internal_eapol_packet_handler;
 static cy_network_ip_change_callback_t ip_change_callback;
@@ -771,7 +776,7 @@ cy_rslt_t cy_network_add_nw_interface(cy_network_hw_interface_type_t iface_type,
         return CY_RSLT_NETWORK_BAD_ARG;
     }
 
-    if (is_interface_added(iface_type))
+    if (is_interface_added(iface_type) && !GET_IP_INSTANCE_CREATED(iface_type))
     {
         return CY_RSLT_SUCCESS;
     }
@@ -799,9 +804,23 @@ cy_rslt_t cy_network_add_nw_interface(cy_network_hw_interface_type_t iface_type,
         ip_addr = ntohl(static_ipaddr->addr.ip.v4);
         netmask = ntohl(static_ipaddr->netmask.ip.v4);
     }
-    status = nx_ip_create(IP_HANDLE(iface_type), (char*)"NetXDuo IP", ip_addr, netmask,
-                          &whd_packet_pools[TX_PACKET_POOL], DRIVER_FOR_IF(iface_type),
-                          STACK_FOR_IF(iface_type), IP_STACK_SIZE, IP_THREAD_PRIORITY);
+
+    /* Has the IP instance already been created? */
+    if (!GET_IP_INSTANCE_CREATED(iface_type))
+    {
+        status = nx_ip_create(IP_HANDLE(iface_type), (char*)"NetXDuo IP", ip_addr, netmask,
+                              &whd_packet_pools[TX_PACKET_POOL], DRIVER_FOR_IF(iface_type),
+                              STACK_FOR_IF(iface_type), IP_STACK_SIZE, IP_THREAD_PRIORITY);
+    }
+    else
+    {
+        status = NX_SUCCESS;
+        if (static_ipaddr != NULL)
+        {
+            /* Set the IP address */
+            status = nx_ip_address_set(IP_HANDLE(iface_type), ip_addr, netmask);
+        }
+    }
 
     if (status != NX_SUCCESS)
     {
@@ -809,6 +828,9 @@ cy_rslt_t cy_network_add_nw_interface(cy_network_hw_interface_type_t iface_type,
         SET_IP_NETWORK_WHD_IFACE(iface_type, NULL);
         return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
     }
+
+    /* Normal IP instance creation has been performed. Clear the IP instance created flag. */
+    SET_IP_INSTANCE_CREATED(iface_type, false);
 
     if (iface_type == CY_NETWORK_WIFI_STA_INTERFACE && static_ipaddr == NULL)
     {
@@ -871,6 +893,7 @@ cy_rslt_t cy_network_remove_nw_interface(cy_network_interface_context *iface_con
         }
         memset(ip_ptr, 0, sizeof(NX_IP));
         SET_IP_SERVICES_ENABLED(iface_context->iface_type, false);
+        SET_IP_INSTANCE_CREATED(iface_context->iface_type, false);
     }
 
     if (iface_context->iface_type == CY_NETWORK_WIFI_STA_INTERFACE)
@@ -1005,14 +1028,22 @@ cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface_context)
 
         if ((res = nx_tcp_enable(IP_HANDLE(iface_context->iface_type))) != NX_SUCCESS)
         {
-            wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "error enable tcp: %d\n", res);
-            return CY_RSLT_TCPIP_ERROR;
+            /* TCP and UDP might already be enabled. */
+            if (NX_ALREADY_ENABLED != res)
+            {
+                wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "error enable tcp: %d\n", res);
+                return CY_RSLT_TCPIP_ERROR;
+            }
         }
 
         if ((res = nx_udp_enable(IP_HANDLE(iface_context->iface_type))) != NX_SUCCESS)
         {
-            wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "error enable udp: %d\n", res);
-            return CY_RSLT_TCPIP_ERROR;
+            /* TCP and UDP might already be enabled. */
+            if (NX_ALREADY_ENABLED != res)
+            {
+                wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "error enable udp: %d\n", res);
+                return CY_RSLT_TCPIP_ERROR;
+            }
         }
 
         if ((res = nxd_icmp_enable(IP_HANDLE(iface_context->iface_type))) != NX_SUCCESS)
@@ -1381,6 +1412,16 @@ static cy_rslt_t dhcp_client_init(cy_network_interface_context *iface, NX_PACKET
 
         return CY_RSLT_NETWORK_ERROR_STARTING_DHCP;
     }
+
+    /*
+     * nx_dhcp_start sets up the initial environment and activates the DHCP timer.
+     * When the timer expires, it will post an event to the main DHCP thread which
+     * will then start the DHCP state machine. The default timer interval is 1 second.
+     * We'd rather not wait to start the DHCP processing so post a timer event to
+     * activate the DHCP thread now.
+     */
+
+    tx_event_flags_set(&(dhcp_handle->nx_dhcp_events), NX_DHCP_CLIENT_TIMER_EVENT, TX_OR);
 
     return CY_RSLT_SUCCESS;
 }
@@ -2500,4 +2541,61 @@ void cy_network_get_packet_pool_info(cy_network_packet_dir_t direction, cy_netwo
     }
 
     return;
+}
+
+/* cy_network_create_ip_instance is used to create an IP instance.
+ *
+ * Some environments will create sockets without bringing up the full network stack. This happens
+ * in the Matter SDK during commissioning when only the BLE interface is active. This API will
+ * create the requested IP instance and enable UDP and TCP services to allow socket creation
+ * before the full network stack is initialized via WCM.
+ */
+cy_rslt_t cy_network_create_ip_instance(cy_network_hw_interface_type_t iface_type, void *hw_interface)
+{
+    UINT status;
+    ULONG ip_addr;
+    ULONG netmask;
+
+    /* Valid interface? */
+    if (iface_type != CY_NETWORK_WIFI_STA_INTERFACE && iface_type != CY_NETWORK_WIFI_AP_INTERFACE)
+    {
+        return CY_RSLT_NETWORK_BAD_ARG;
+    }
+
+    /* Has the IP instance already been created? */
+    if (!is_interface_added(iface_type))
+    {
+        /* Set the WHD interface for the network role. */
+        SET_IP_NETWORK_WHD_IFACE(iface_type, (whd_interface_t)hw_interface);
+
+        /* IP instance needs to be created. Use an IP address of 0 for now. A real IP address
+         * will be assigned when the full stack is initialized. */
+        ip_addr = 0;
+        netmask = 0xFFFFF000UL;
+        status  = nx_ip_create(IP_HANDLE(iface_type), (char*)"NetXDuo IP", ip_addr, netmask,
+                               &whd_packet_pools[TX_PACKET_POOL], DRIVER_FOR_IF(iface_type),
+                               STACK_FOR_IF(iface_type), IP_STACK_SIZE, IP_THREAD_PRIORITY);
+
+        if (status != NX_SUCCESS)
+        {
+            wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Error creating interface\n");
+            return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
+        }
+
+        /* Enable the UDP and TCP services. */
+        status  = nx_udp_enable(IP_HANDLE(iface_type));
+        status |= nx_tcp_enable(IP_HANDLE(iface_type));
+        if (status != NX_SUCCESS)
+        {
+            wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "error enable udp and tcp: %d\n", status);
+            nx_ip_delete(IP_HANDLE(iface_type));
+            SET_IP_NETWORK_WHD_IFACE(iface_type, NULL);
+            return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
+        }
+
+        /* Note that the IP instance has been created via this API. */
+        SET_IP_INSTANCE_CREATED(iface_type, true);
+    }
+
+    return CY_RSLT_SUCCESS;
 }

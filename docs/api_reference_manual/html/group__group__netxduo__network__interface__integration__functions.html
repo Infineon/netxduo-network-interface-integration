@@ -160,6 +160,9 @@ Functions</h2></td></tr>
 <tr class="memitem:ga94da6bdcf9e3dc0ea4157ac9f1233500"><td class="memItemLeft" align="right" valign="top">cy_rslt_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__group__netxduo__network__interface__integration__functions.html#ga94da6bdcf9e3dc0ea4157ac9f1233500">cy_network_get_packet_pool</a> (<a class="el" href="group__group__netxduo__network__interface__integration.html#gaf1b85dd8d44d1c9547010678aa79d15f">cy_network_packet_dir_t</a> direction, void **pool)</td></tr>
 <tr class="memdesc:ga94da6bdcf9e3dc0ea4157ac9f1233500"><td class="mdescLeft">&#160;</td><td class="mdescRight">This function returns a packet pool for the given packet direction.  <a href="group__group__netxduo__network__interface__integration__functions.html#ga94da6bdcf9e3dc0ea4157ac9f1233500">More...</a><br /></td></tr>
 <tr class="separator:ga94da6bdcf9e3dc0ea4157ac9f1233500"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gadffd5b457b63e0f237d37c37360d3b7b"><td class="memItemLeft" align="right" valign="top">cy_rslt_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__group__netxduo__network__interface__integration__functions.html#gadffd5b457b63e0f237d37c37360d3b7b">cy_network_create_ip_instance</a> (<a class="el" href="group__group__netxduo__network__interface__integration__enums.html#ga1609e48b69352ef0c60d2215ef6a2cef">cy_network_hw_interface_type_t</a> iface_type, void *hw_interface)</td></tr>
+<tr class="memdesc:gadffd5b457b63e0f237d37c37360d3b7b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create the IP instance for the network interface,.  <a href="group__group__netxduo__network__interface__integration__functions.html#gadffd5b457b63e0f237d37c37360d3b7b">More...</a><br /></td></tr>
+<tr class="separator:gadffd5b457b63e0f237d37c37360d3b7b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Typedef Documentation</h2>
 <a id="ga63afa6bcbec8b99a8593ee788bbc2455" name="ga63afa6bcbec8b99a8593ee788bbc2455"></a>
@@ -869,6 +872,44 @@ Functions</h2></td></tr>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">direction</td><td>Indicates transmit/receive direction of the packet pool. </td></tr>
     <tr><td class="paramdir">[in,out]</td><td class="paramname">pool</td><td>Pointer to the pointer of the pool.</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>CY_RSLT_SUCCESS if successful, failure code otherwise. </dd></dl>
+
+</div>
+</div>
+<a id="gadffd5b457b63e0f237d37c37360d3b7b" name="gadffd5b457b63e0f237d37c37360d3b7b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gadffd5b457b63e0f237d37c37360d3b7b">&#9670;&nbsp;</a></span>cy_network_create_ip_instance()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">cy_rslt_t cy_network_create_ip_instance </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="group__group__netxduo__network__interface__integration__enums.html#ga1609e48b69352ef0c60d2215ef6a2cef">cy_network_hw_interface_type_t</a>&#160;</td>
+          <td class="paramname"><em>iface_type</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">void *&#160;</td>
+          <td class="paramname"><em>hw_interface</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Create the IP instance for the network interface,. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">iface_type</td><td>Network interface type <a class="el" href="group__group__netxduo__network__interface__integration__enums.html#ga1609e48b69352ef0c60d2215ef6a2cef">cy_network_hw_interface_type_t</a>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">hw_interface</td><td>Handle to the already initialized HW interface. For example, whd_interface_t pointer that is initialized using cybsp_wifi_init_primary() function. Similarly for ethernet it can be ethernet interface pointer.</td></tr>
   </table>
   </dd>
 </dl>

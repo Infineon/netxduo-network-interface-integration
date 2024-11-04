@@ -29,7 +29,7 @@
  * including Cypress's product in a High Risk Product, the manufacturer
  * of such system or application assumes all risk of such use and in doing
  * so agrees to indemnify Cypress against all liability.
-*/
+ */
 
 /**
 * \addtogroup group_netxduo_network_interface_integration netxduo-network-interface-integration
@@ -430,6 +430,18 @@ void cy_network_get_packet_pool_info(cy_network_packet_dir_t direction, cy_netwo
  */
 cy_rslt_t cy_network_random_number_generate( unsigned char *output, size_t len, size_t *olen );
 #endif
+
+/**
+ * Create the IP instance for the network interface,
+ *
+ * @param[in]  iface_type      Network interface type \ref cy_network_hw_interface_type_t.
+ * @param[in]  hw_interface    Handle to the already initialized HW interface.
+ *                             For example, whd_interface_t pointer that is initialized using cybsp_wifi_init_primary() function. Similarly for ethernet it can be ethernet interface pointer.
+ *
+ * @return CY_RSLT_SUCCESS if successful, failure code otherwise.
+ */
+cy_rslt_t cy_network_create_ip_instance(cy_network_hw_interface_type_t iface_type, void *hw_interface);
+
 /** \} group_netxduo_network_interface_integration_functions */
 #ifdef __cplusplus
 }

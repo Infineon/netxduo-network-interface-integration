@@ -20,5 +20,6 @@ var group__group__netxduo__network__interface__integration__functions =
     [ "cy_network_get_netmask_address", "group__group__netxduo__network__interface__integration__functions.html#gaf7f8a15b99730c96acc26df268b0f697", null ],
     [ "cy_network_ping", "group__group__netxduo__network__interface__integration__functions.html#ga29168614364188bcac6e84ea15835847", null ],
     [ "cy_network_get_packet", "group__group__netxduo__network__interface__integration__functions.html#gaadf577dcb736366bea86381041457907", null ],
-    [ "cy_network_get_packet_pool", "group__group__netxduo__network__interface__integration__functions.html#ga94da6bdcf9e3dc0ea4157ac9f1233500", null ]
+    [ "cy_network_get_packet_pool", "group__group__netxduo__network__interface__integration__functions.html#ga94da6bdcf9e3dc0ea4157ac9f1233500", null ],
+    [ "cy_network_create_ip_instance", "group__group__netxduo__network__interface__integration__functions.html#gadffd5b457b63e0f237d37c37360d3b7b", null ]
 ];

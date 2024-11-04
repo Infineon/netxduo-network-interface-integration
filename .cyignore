@@ -4,9 +4,7 @@ docs
 $(SEARCH_aws-iot-device-sdk-embedded-C)/202103.00/libraries/aws/ota-for-aws-iot-embedded-sdk
 $(SEARCH_aws-iot-device-sdk-port)/source/ota 
 
-../../aws-iot-device-sdk-embedded-C/202103.00/libraries/standard/corePKCS11/source/core_pkcs11.c
 ../../aws-iot-device-sdk-embedded-C/202103.00/libraries/standard/corePKCS11/source/dependency/3rdparty/mbedtls_utils
-$(SEARCH_aws-iot-device-sdk-embedded-C)/202103.00/libraries/standard/corePKCS11/source/core_pkcs11.c
 $(SEARCH_aws-iot-device-sdk-embedded-C)/202103.00/libraries/standard/corePKCS11/source/dependency/3rdparty/mbedtls_utils
 
 ../wifi-host-driver/docs
