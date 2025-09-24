@@ -1,5 +1,5 @@
 /*
- * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company) or
+ * Copyright 2025, Cypress Semiconductor Corporation (an Infineon company) or
  * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
@@ -110,6 +110,10 @@
 #if defined(COMPONENT_CAT1)
 #define MAX_TRNG_BIT_SIZE        (32UL)
 #endif
+
+#define CREATE_IP_INITIAL_IP                (0UL)
+#define CREATE_IP_INITIAL_NETMASK           (0xFFFFF000UL)
+
 /******************************************************
  *                      Macros
  ******************************************************/
@@ -222,6 +226,11 @@ static bool ip_instance_created[MAX_NW_INTERFACE];
 #define SET_IP_INSTANCE_CREATED(interface, status)  (ip_instance_created[(interface)&3] = status)
 #define GET_IP_INSTANCE_CREATED(interface)          (ip_instance_created[(interface)&3])
 
+/* IP instance should not be deleted if network brought down. */
+static bool ip_instance_sticky[MAX_NW_INTERFACE];
+#define SET_IP_INSTANCE_STICKY(interface, status)   (ip_instance_sticky[(interface)&3] = status)
+#define GET_IP_INSTANCE_STICKY(interface)           (ip_instance_sticky[(interface)&3])
+
 static cy_network_activity_event_callback_t activity_callback;
 static cy_wifimwcore_eapol_packet_handler_t internal_eapol_packet_handler;
 static cy_network_ip_change_callback_t ip_change_callback;
@@ -294,6 +303,9 @@ static char *cy_nxd_arp_cache[MAX_NW_INTERFACE] =
 static void *tx_buffer_pool_memory;
 static void *rx_buffer_pool_memory;
 static void *ioctl_buffer_memory;
+#ifdef COMPONENT_SDIO_HM_TRANSPORT
+static void *sdio_dma_memory;
+#endif
 static NX_PACKET *ioctl_packets[NUM_IOCTL_PACKETS];
 static bool ioctl_packet_in_use[NUM_IOCTL_PACKETS];
 
@@ -320,6 +332,14 @@ static NX_PACKET_POOL whd_packet_pools[NUM_PACKET_POOLS];  /* 0=TX/COM, 1=RX/Def
 /** mutex to protect trng count */
 static cy_mutex_t trng_mutex;
 #endif
+
+/* Second network interface support */
+static uint8_t intf_src_mac[6];
+static uint8_t intf_dst_mac[6];
+static cy_process_tx_packet_t intf_tx_callback;
+static void *intf_user_data;
+static UINT intf_interface_index;
+
 /******************************************************
  *               Function Definitions
  ******************************************************/
@@ -350,7 +370,11 @@ cy_rslt_t cy_network_init(void)
          * Allocate the memory for the packet pools.
          */
 
+#ifndef COMPONENT_SDIO_HM_TRANSPORT
         memory_size = APP_TX_BUFFER_POOL_SIZE + APP_RX_BUFFER_POOL_SIZE + APP_IOCTL_BUFFER_POOL_SIZE + (sizeof(uint32_t) * 3);
+#else
+        memory_size = APP_TX_BUFFER_POOL_SIZE + APP_RX_BUFFER_POOL_SIZE + APP_IOCTL_BUFFER_POOL_SIZE + SDIO_F2_DMA_BUFFER_SIZE + (sizeof(uint32_t) * 4);
+#endif
         allocated_buffer_pool_memory = whd_hw_allocatePermanentApi(memory_size);
         if (allocated_buffer_pool_memory == NULL)
         {
@@ -362,7 +386,11 @@ cy_rslt_t cy_network_init(void)
          * Map the memory region for WLAN to use.
          */
 
+#ifndef COMPONENT_SDIO_HM_TRANSPORT
         result = whd_hw_openDeviceAccessApi(WHD_HW_DEVICE_WLAN, allocated_buffer_pool_memory, memory_size, PACKET_POOL_REGION_INDEX);
+#else
+        result = whd_hw_openDeviceAccessApi(WHD_HW_DEVICE_SDIO_AND_WLAN, allocated_buffer_pool_memory, memory_size, PACKET_POOL_REGION_INDEX);
+#endif
         if (!result)
         {
             return CY_RSLT_TCPIP_ERROR;
@@ -375,6 +403,9 @@ cy_rslt_t cy_network_init(void)
         tx_buffer_pool_memory   = (void*)(((uint32_t)allocated_buffer_pool_memory + 0x03) & ~(0x03));
         rx_buffer_pool_memory   = (void*)(((uint32_t)tx_buffer_pool_memory + APP_TX_BUFFER_POOL_SIZE + 0x03) & ~(0x03));
         ioctl_buffer_memory     = (void*)(((uint32_t)rx_buffer_pool_memory + APP_RX_BUFFER_POOL_SIZE + 0x03) & ~(0x03));
+#ifdef COMPONENT_SDIO_HM_TRANSPORT
+        sdio_dma_memory         = (void*)(((uint32_t)ioctl_buffer_memory + APP_IOCTL_BUFFER_POOL_SIZE + 0x03) & ~(0x03));
+#endif
 
         /*
          * Set up the pointers for the IOCTL packets.
@@ -403,6 +434,13 @@ cy_rslt_t cy_network_init(void)
 
     return CY_RSLT_SUCCESS;
 }
+
+#if defined(COMPONENT_55900) && defined(COMPONENT_SDIO_HM_TRANSPORT)
+void *cy_network_get_sdio_dma_memory(void)
+{
+    return sdio_dma_memory;
+}
+#endif
 
 static VOID cy_sta_netxduo_driver_entry(NX_IP_DRIVER *driver)
 {
@@ -535,7 +573,7 @@ static void cy_netxduo_multicast_driver_request_to_address(NX_IP_DRIVER *driver,
     mac->octet[5] = (uint8_t) ((driver->nx_ip_driver_physical_address_lsw & 0x000000ff) >> 0);
 }
 
-static void cy_netxduo_add_ethernet_header(NX_IP *ip_ptr_in, NX_PACKET *packet_ptr, ULONG destination_mac_msw, ULONG destination_mac_lsw, USHORT ethertype)
+static void cy_netxduo_add_ethernet_header(NX_INTERFACE *driver_iface, NX_PACKET *packet_ptr, ULONG destination_mac_msw, ULONG destination_mac_lsw, USHORT ethertype)
 {
     ULONG *ethernet_header;
 
@@ -548,8 +586,8 @@ static void cy_netxduo_add_ethernet_header(NX_IP *ip_ptr_in, NX_PACKET *packet_p
 
     *ethernet_header = destination_mac_msw;
     *(ethernet_header + 1) = destination_mac_lsw;
-    *(ethernet_header + 2) = (ip_ptr_in->nx_ip_arp_physical_address_msw << 16) | (ip_ptr_in->nx_ip_arp_physical_address_lsw >> 16);
-    *(ethernet_header + 3) = (ip_ptr_in->nx_ip_arp_physical_address_lsw << 16) | ethertype;
+    *(ethernet_header + 2) = (driver_iface->nx_interface_physical_address_msw << 16) | (driver_iface->nx_interface_physical_address_lsw >> 16);
+    *(ethernet_header + 3) = (driver_iface->nx_interface_physical_address_lsw << 16) | ethertype;
 
     NX_CHANGE_ULONG_ENDIAN(*(ethernet_header));
     NX_CHANGE_ULONG_ENDIAN(*(ethernet_header+1));
@@ -566,13 +604,15 @@ static void cy_netxduo_add_ethernet_header(NX_IP *ip_ptr_in, NX_PACKET *packet_p
  */
 static void cy_netxduo_driver_entry(NX_IP_DRIVER *driver, whd_interface_t ifp)
 {
+    NX_INTERFACE *driver_iface;
     NX_PACKET *packet_ptr;
     whd_mac_t mac;
     NX_IP *ip;
 
     CY_ASSERT(driver != NULL);
 
-    packet_ptr = driver->nx_ip_driver_packet;
+    driver_iface = driver->nx_ip_driver_interface;
+    packet_ptr   = driver->nx_ip_driver_packet;
 
     driver->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
 
@@ -665,11 +705,11 @@ static void cy_netxduo_driver_entry(NX_IP_DRIVER *driver, whd_interface_t ifp)
             case NX_LINK_PACKET_SEND:
                 if (packet_ptr->nx_packet_ip_version == NX_IP_VERSION_V4)
                 {
-                    cy_netxduo_add_ethernet_header(ip, packet_ptr, driver->nx_ip_driver_physical_address_msw, driver->nx_ip_driver_physical_address_lsw, (USHORT) WHD_ETHERTYPE_IPv4);
+                    cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, driver->nx_ip_driver_physical_address_msw, driver->nx_ip_driver_physical_address_lsw, (USHORT) WHD_ETHERTYPE_IPv4);
                 }
                 else if (packet_ptr->nx_packet_ip_version == NX_IP_VERSION_V6)
                 {
-                    cy_netxduo_add_ethernet_header(ip, packet_ptr, driver->nx_ip_driver_physical_address_msw, driver->nx_ip_driver_physical_address_lsw, (USHORT) WHD_ETHERTYPE_IPv6);
+                    cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, driver->nx_ip_driver_physical_address_msw, driver->nx_ip_driver_physical_address_lsw, (USHORT) WHD_ETHERTYPE_IPv6);
                 }
                 else
                 {
@@ -682,19 +722,19 @@ static void cy_netxduo_driver_entry(NX_IP_DRIVER *driver, whd_interface_t ifp)
                 break;
 
             case NX_LINK_ARP_RESPONSE_SEND:
-                cy_netxduo_add_ethernet_header(ip, packet_ptr, driver->nx_ip_driver_physical_address_msw, driver->nx_ip_driver_physical_address_lsw, (USHORT) WHD_ETHERTYPE_ARP);
+                cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, driver->nx_ip_driver_physical_address_msw, driver->nx_ip_driver_physical_address_lsw, (USHORT) WHD_ETHERTYPE_ARP);
                 whd_network_send_ethernet_data(ifp, (whd_buffer_t)packet_ptr);
                 driver->nx_ip_driver_status = (UINT) NX_SUCCESS;
                 break;
 
             case NX_LINK_ARP_SEND:
-                cy_netxduo_add_ethernet_header(ip, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_ARP);
+                cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_ARP);
                 whd_network_send_ethernet_data(ifp, (whd_buffer_t)packet_ptr);
                 driver->nx_ip_driver_status = (UINT) NX_SUCCESS;
                 break;
 
             case NX_LINK_RARP_SEND:
-                cy_netxduo_add_ethernet_header(ip, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_RARP);
+                cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_RARP);
                 whd_network_send_ethernet_data(ifp, (whd_buffer_t)packet_ptr);
                 driver->nx_ip_driver_status = (UINT) NX_SUCCESS;
                 break;
@@ -702,11 +742,11 @@ static void cy_netxduo_driver_entry(NX_IP_DRIVER *driver, whd_interface_t ifp)
             case NX_LINK_PACKET_BROADCAST:
                 if (packet_ptr->nx_packet_ip_version == NX_IP_VERSION_V4)
                 {
-                    cy_netxduo_add_ethernet_header(ip, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_IPv4);
+                    cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_IPv4);
                 }
                 else if (packet_ptr->nx_packet_ip_version == NX_IP_VERSION_V6)
                 {
-                    cy_netxduo_add_ethernet_header(ip, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_IPv6);
+                    cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, (ULONG) 0xFFFF, (ULONG) 0xFFFFFFFF, (USHORT) WHD_ETHERTYPE_IPv6);
                 }
                 else
                 {
@@ -796,8 +836,8 @@ cy_rslt_t cy_network_add_nw_interface(cy_network_hw_interface_type_t iface_type,
     /* Assign the IP address if static, otherwise, zero the IP address */
     if (static_ipaddr == NULL)
     {
-        ip_addr = 0;
-        netmask = 0xFFFFF000UL;
+        ip_addr = CREATE_IP_INITIAL_IP;
+        netmask = CREATE_IP_INITIAL_NETMASK;
     }
     else
     {
@@ -886,14 +926,25 @@ cy_rslt_t cy_network_remove_nw_interface(cy_network_interface_context *iface_con
             activity_callback(true);
         }
 
-        if (nx_ip_delete(IP_HANDLE(iface_context->iface_type)) != NX_SUCCESS)
+        if (!GET_IP_INSTANCE_STICKY(iface_context->iface_type))
         {
-            wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Could not delete IP instance\n");
-            return CY_RSLT_NETWORK_ERROR_REMOVING_INTERFACE;
+            if (nx_ip_delete(IP_HANDLE(iface_context->iface_type)) != NX_SUCCESS)
+            {
+                wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Could not delete IP instance\n");
+                return CY_RSLT_NETWORK_ERROR_REMOVING_INTERFACE;
+            }
+            memset(ip_ptr, 0, sizeof(NX_IP));
+            SET_IP_SERVICES_ENABLED(iface_context->iface_type, false);
+            SET_IP_INSTANCE_CREATED(iface_context->iface_type, false);
         }
-        memset(ip_ptr, 0, sizeof(NX_IP));
-        SET_IP_SERVICES_ENABLED(iface_context->iface_type, false);
-        SET_IP_INSTANCE_CREATED(iface_context->iface_type, false);
+        else
+        {
+            /* Clear the address of the interface */
+            nx_ip_interface_address_set(IP_HANDLE(iface_context->iface_type), 0, CREATE_IP_INITIAL_IP, CREATE_IP_INITIAL_NETMASK);
+
+            /* Make sure that we know the IP instance still exists */
+            SET_IP_INSTANCE_CREATED(iface_context->iface_type, true);
+        }
     }
 
     if (iface_context->iface_type == CY_NETWORK_WIFI_STA_INTERFACE)
@@ -901,7 +952,14 @@ cy_rslt_t cy_network_remove_nw_interface(cy_network_interface_context *iface_con
         wifi_sta_dhcp_needed = false;
     }
 
-    SET_IP_NETWORK_WHD_IFACE(iface_context->iface_type, NULL);
+    if (!GET_IP_INSTANCE_STICKY(iface_context->iface_type))
+    {
+        /*
+         * Keep the hw interface set as some of the utility routines use
+         * it to determine if the interface has been initialized.
+         */
+        SET_IP_NETWORK_WHD_IFACE(iface_context->iface_type, NULL);
+    }
 
     memset(iface_context, 0, sizeof(cy_network_interface_context));
 
@@ -2570,8 +2628,8 @@ cy_rslt_t cy_network_create_ip_instance(cy_network_hw_interface_type_t iface_typ
 
         /* IP instance needs to be created. Use an IP address of 0 for now. A real IP address
          * will be assigned when the full stack is initialized. */
-        ip_addr = 0;
-        netmask = 0xFFFFF000UL;
+        ip_addr = CREATE_IP_INITIAL_IP;
+        netmask = CREATE_IP_INITIAL_NETMASK;
         status  = nx_ip_create(IP_HANDLE(iface_type), (char*)"NetXDuo IP", ip_addr, netmask,
                                &whd_packet_pools[TX_PACKET_POOL], DRIVER_FOR_IF(iface_type),
                                STACK_FOR_IF(iface_type), IP_STACK_SIZE, IP_THREAD_PRIORITY);
@@ -2585,6 +2643,7 @@ cy_rslt_t cy_network_create_ip_instance(cy_network_hw_interface_type_t iface_typ
         /* Enable the UDP and TCP services. */
         status  = nx_udp_enable(IP_HANDLE(iface_type));
         status |= nx_tcp_enable(IP_HANDLE(iface_type));
+        status |= nx_ip_fragment_enable(IP_HANDLE(iface_type));
         if (status != NX_SUCCESS)
         {
             wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "error enable udp and tcp: %d\n", status);
@@ -2595,6 +2654,435 @@ cy_rslt_t cy_network_create_ip_instance(cy_network_hw_interface_type_t iface_typ
 
         /* Note that the IP instance has been created via this API. */
         SET_IP_INSTANCE_CREATED(iface_type, true);
+    }
+
+    return CY_RSLT_SUCCESS;
+}
+
+/* Routines for the second network interface functionality. */
+/*
+ * This function takes packets from the NetXDuo stack and sends them down to the TX.
+ * callback for the second interface. If the callback is NULL then the packet is freed (dropped).
+ * the packet for the radio driver and send the packet to the radio driver.  The
+ * TX callback will release the packet reference once the packet is actually sent.
+ */
+static VOID intf_netxduo_driver_entry(NX_IP_DRIVER *driver)
+{
+    NX_INTERFACE *driver_iface;
+    NX_PACKET *packet_ptr;
+
+    if (driver == NULL)
+    {
+        return;
+    }
+
+    wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "intf_netxduo_driver_entry: %d\n", driver->nx_ip_driver_command);
+
+    driver_iface = driver->nx_ip_driver_interface;
+    packet_ptr   = driver->nx_ip_driver_packet;
+    driver->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
+
+    /* Process commands which are valid independent of the link state */
+    switch (driver->nx_ip_driver_command)
+    {
+        case NX_LINK_INITIALIZE:
+            driver_iface->nx_interface_ip_mtu_size            = (ULONG)WHD_PAYLOAD_MTU;
+            driver_iface->nx_interface_address_mapping_needed = (UINT)NX_FALSE;            /* No ARP needed on this interface */
+            driver->nx_ip_driver_status                       = (UINT)NX_SUCCESS;
+            break;
+
+        case NX_LINK_UNINITIALIZE:
+            return;
+
+        case NX_LINK_ENABLE:
+            driver_iface->nx_interface_physical_address_msw = (ULONG)((intf_src_mac[0] << 8) + intf_src_mac[1]);
+            driver_iface->nx_interface_physical_address_lsw = (ULONG)((intf_src_mac[2] << 24) + (intf_src_mac[3] << 16) + (intf_src_mac[4] << 8) + intf_src_mac[5]);
+
+            driver_iface->nx_interface_link_up = (UINT)NX_TRUE;
+            driver->nx_ip_driver_status        = (UINT)NX_SUCCESS;
+            break;
+
+        case NX_LINK_DISABLE:
+            driver_iface->nx_interface_link_up = NX_FALSE;
+            driver->nx_ip_driver_status        = (UINT)NX_SUCCESS;
+            break;
+
+        case NX_LINK_MULTICAST_JOIN:
+        case NX_LINK_MULTICAST_LEAVE:
+            /* We are not supporting multicast on this interface so just report success */
+            driver->nx_ip_driver_status = (UINT)NX_SUCCESS;
+            break;
+
+        case NX_LINK_GET_STATUS:
+            /* Signal status through return pointer */
+            *(driver->nx_ip_driver_return_ptr) = (ULONG)driver_iface->nx_interface_link_up;
+            driver->nx_ip_driver_status = (UINT)NX_SUCCESS;
+            break;
+
+        case NX_LINK_PACKET_SEND:
+        case NX_LINK_ARP_RESPONSE_SEND:
+        case NX_LINK_ARP_SEND:
+        case NX_LINK_RARP_SEND:
+        case NX_LINK_PACKET_BROADCAST:
+            /* These cases require the link to be up, and will be processed below if it is up. */
+            break;
+
+        case NX_LINK_DEFERRED_PROCESSING:
+        default:
+            /* Invalid driver request */
+            driver->nx_ip_driver_status = (UINT) NX_UNHANDLED_COMMAND;
+            break;
+    }
+
+    /* Check if the link is up */
+    if (driver_iface->nx_interface_link_up == NX_TRUE)
+    {
+        switch (driver->nx_ip_driver_command)
+        {
+            case NX_LINK_PACKET_SEND:
+                if (packet_ptr->nx_packet_ip_version == NX_IP_VERSION_V4)
+                {
+                    /*
+                     * Instead of driver->nx_ip_driver_physical_address_msw we can just hard code the destination mac address.
+                     */
+                    cy_netxduo_add_ethernet_header(driver_iface, packet_ptr, (ULONG)((intf_dst_mac[0] << 8) + intf_dst_mac[1]),
+                                                   (ULONG)((intf_dst_mac[2] << 24) + (intf_dst_mac[3] << 16) + (intf_dst_mac[4] << 8) + intf_dst_mac[5]),
+                                                   (USHORT)IPv4_PACKET_TYPE);
+                }
+                else
+                {
+                    wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Bad packet IP version");
+                    cy_buffer_release((whd_buffer_t)packet_ptr, WHD_NETWORK_TX);
+                    break;
+                }
+                /*
+                 * Send the packet to the TX packet callback for the network interface.
+                 */
+                if (intf_tx_callback)
+                {
+                    intf_tx_callback(packet_ptr, intf_user_data);
+                }
+                else
+                {
+                    /* Use cy_buffer_release to free the packet in case it's a TCP packet
+                     * still being referenced by the stack. */
+                    cy_buffer_release((whd_buffer_t)packet_ptr, WHD_NETWORK_TX);
+                }
+                driver->nx_ip_driver_status = (UINT)NX_SUCCESS;
+                break;
+
+            case NX_LINK_ARP_RESPONSE_SEND:
+            case NX_LINK_ARP_SEND:
+            case NX_LINK_RARP_SEND:
+                /* These shouldn't be received as ARP isn't enabled on this interface */
+                nx_packet_release(packet_ptr);
+                break;
+
+            case NX_LINK_PACKET_BROADCAST:
+                nx_packet_release(packet_ptr);
+                break;
+
+            case NX_LINK_INITIALIZE:
+            case NX_LINK_ENABLE:
+            case NX_LINK_DISABLE:
+            case NX_LINK_MULTICAST_JOIN:
+            case NX_LINK_MULTICAST_LEAVE:
+            case NX_LINK_GET_STATUS:
+            case NX_LINK_DEFERRED_PROCESSING:
+            default:
+                /* Handled in above case statement */
+                break;
+        }
+    }
+    else
+    {
+        /* Link is down, free any packet provided by the command */
+        if (packet_ptr != NULL)
+        {
+            switch (driver->nx_ip_driver_command)
+            {
+                case NX_LINK_PACKET_BROADCAST:
+                case NX_LINK_RARP_SEND:
+                case NX_LINK_ARP_SEND:
+                case NX_LINK_ARP_RESPONSE_SEND:
+                case NX_LINK_PACKET_SEND:
+                    nx_packet_release(packet_ptr);
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+}
+
+/*
+ * This function takes packets for the second network interface and passes them into the
+ * NetX Duo stack.  If the stack is not initialized, or if the NetX Duo stack does not
+ * accept the packet, the packet is freed (dropped).
+ */
+void cy_network_process_intf_ethernet_data(NX_PACKET *packet_ptr)
+{
+    unsigned char *data = packet_ptr->nx_packet_prepend_ptr;
+    USHORT ethertype;
+    NX_IP *net_interface;
+
+    net_interface = (NX_IP *)cy_network_get_nw_interface(CY_NETWORK_WIFI_STA_INTERFACE, intf_interface_index);
+
+    /* Setup interface pointer.  */
+    packet_ptr->nx_packet_address.nx_packet_interface_ptr = &net_interface->nx_ip_interface[intf_interface_index];
+
+    ethertype = (uint16_t)(data[12] << 8 | data[13]);
+    if (net_interface == NULL || net_interface->nx_ip_id != NX_IP_ID)
+    {
+        nx_packet_release(packet_ptr);
+        return;
+    }
+
+    /* Call activity handler which is registered with argument as false
+     * indicating there is RX packet
+     */
+    if (activity_callback)
+    {
+        activity_callback(false);
+    }
+
+    /* Remove the ethernet header, so packet is ready for reading by NetXDuo */
+    packet_ptr->nx_packet_prepend_ptr = packet_ptr->nx_packet_prepend_ptr + WHD_ETHERNET_SIZE;
+    packet_ptr->nx_packet_length      = packet_ptr->nx_packet_length - WHD_ETHERNET_SIZE;
+
+    if ((ethertype == IPv4_PACKET_TYPE) || ethertype == IPv6_PACKET_TYPE)
+    {
+#ifdef NX_DIRECT_ISR_CALL
+        _nx_ip_packet_receive(net_interface, packet_ptr);
+#else
+        _nx_ip_packet_deferred_receive(net_interface, packet_ptr);
+#endif
+    }
+    else
+    {
+        /* Unknown ethertype - just release the packet */
+        nx_packet_release(packet_ptr);
+    }
+}
+
+/*
+ * cy_network_create_second_interface is used to create a second network interface
+ * on the STA IP instance.
+ */
+cy_rslt_t cy_network_create_second_interface(char *name, ULONG ipaddr, ULONG netmask,
+                                             uint8_t *src_mac, uint8_t *dst_mac,
+                                             cy_process_tx_packet_t process_tx_callback, void *user_data)
+{
+    extern whd_interface_t whd_ifs[2];
+    NX_IP *ip;
+    cy_rslt_t result;
+    ULONG actual_status;
+    ULONG check_addr;
+    ULONG check_mask;
+    UINT index;
+    UINT status;
+
+    wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "Create second network interface...\n");
+
+    memcpy(intf_src_mac, src_mac, sizeof(intf_src_mac));
+    memcpy(intf_dst_mac, dst_mac, sizeof(intf_dst_mac));
+    intf_tx_callback = process_tx_callback;
+    intf_user_data   = user_data;
+
+    /*
+     * Make sure that WCM has initialized the WHD interface structure that we need.
+     */
+
+    if (whd_ifs[CY_NETWORK_WIFI_STA_INTERFACE] == NULL)
+    {
+        wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "WCM is not initialized. Call cy_wcm_init() to initialize\n");
+        return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
+    }
+
+    /*
+     * Create the IP instance.
+     */
+
+    result = cy_network_create_ip_instance(CY_NETWORK_WIFI_STA_INTERFACE, whd_ifs[CY_NETWORK_WIFI_STA_INTERFACE]);
+    if (result != CY_RSLT_SUCCESS)
+    {
+        wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Unable to create IP instance\n");
+        return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
+    }
+
+    /*
+     * Attach the secondary interface to the IP instance.
+     */
+
+    ip = (NX_IP *)cy_network_get_nw_interface(CY_NETWORK_WIFI_STA_INTERFACE, 0);
+    status = nx_ip_interface_attach(ip, name, ipaddr, netmask, intf_netxduo_driver_entry);
+    if (status != NX_SUCCESS)
+    {
+        wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Unable to attach secondary interface\n");
+        return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
+    }
+
+    /*
+     * We should be assigned interface index 1 during a normal startup.
+     * But just to be paranoid let's double check.
+     */
+
+    for (index = 0; index < NX_MAX_PHYSICAL_INTERFACES; index++)
+    {
+        if (nx_ip_interface_address_get(ip, index, &check_addr, &check_mask) == NX_SUCCESS)
+        {
+            if (check_addr == ipaddr)
+            {
+                wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "Interface index is %u\n", index);
+                intf_interface_index = index;
+                break;
+            }
+        }
+    }
+
+    if (index == NX_MAX_PHYSICAL_INTERFACES)
+    {
+        wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Unable to retrieve index of attach secondary interface\n");
+        return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
+    }
+
+    /*
+     * And verify that we've initialized successfully.
+     */
+
+    status = nx_ip_interface_status_check(ip, intf_interface_index, (NX_IP_INITIALIZE_DONE | NX_IP_INTERFACE_LINK_ENABLED), &actual_status, NX_IP_PERIODIC_RATE);
+    if (status != NX_SUCCESS)
+    {
+        wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Interface initialization not complete\n");
+        return CY_RSLT_NETWORK_ERROR_ADDING_INTERFACE;
+    }
+
+    wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "Secondary interface initialization complete.\n");
+    SET_IP_INSTANCE_STICKY(CY_NETWORK_WIFI_STA_INTERFACE, true);
+
+    return result;
+}
+
+/*
+ * cy_network_check_second_interface_address_conflict is used to check for an IP address
+ * conflict between the first and second network interfaces on the STA IP instance.
+ */
+cy_rslt_t cy_network_check_second_interface_address_conflict(bool *conflict)
+{
+    NX_IP *ip;
+    ULONG addr0;
+    ULONG addr1;
+    ULONG mask0;
+    ULONG mask1;
+    ULONG status0;
+    ULONG status1;
+    UINT error;
+
+    if (conflict == NULL)
+    {
+        return CY_RSLT_NETWORK_BAD_ARG;
+    }
+
+    *conflict = false;
+
+    if (intf_interface_index == 0)
+    {
+        /*
+         * Interface index 0 is always used for the STA interface. If the second interface
+         * index is 0 then the second interface hasn't been initialized.
+         */
+
+        return CY_RSLT_NETWORK_INTERFACE_DOES_NOT_EXIST;
+    }
+
+    /*
+     * Get the pointer to the IP instance.
+     */
+
+    ip = (NX_IP *)cy_network_get_nw_interface(CY_NETWORK_WIFI_STA_INTERFACE, 0);
+    if (ip == NULL)
+    {
+        return CY_RSLT_NETWORK_INTERFACE_NETWORK_NOT_UP;
+    }
+
+    /*
+     * Check to see if both interfaces are up and have addresses assigned.
+     */
+
+    error = nx_ip_interface_status_check(ip, 0, (NX_IP_INITIALIZE_DONE | NX_IP_ADDRESS_RESOLVED | NX_IP_INTERFACE_LINK_ENABLED), &status0, NX_NO_WAIT);
+    if (error != NX_SUCCESS)
+    {
+        /*
+         * Can't have a conflict if the interface doesn't have an address.
+         */
+
+        return CY_RSLT_SUCCESS;
+    }
+
+    error = nx_ip_interface_status_check(ip, intf_interface_index, (NX_IP_INITIALIZE_DONE | NX_IP_ADDRESS_RESOLVED | NX_IP_INTERFACE_LINK_ENABLED), &status1, NX_NO_WAIT);
+    if (error != NX_SUCCESS)
+    {
+        /*
+         * Can't have a conflict if the interface doesn't have an address.
+         */
+
+        return CY_RSLT_SUCCESS;
+    }
+
+    /*
+     * Get the addresses for interface 0 and interface 1 and check for a conflict.
+     */
+
+    nx_ip_interface_address_get(ip, 0, &addr0, &mask0);
+    nx_ip_interface_address_get(ip, intf_interface_index, &addr1, &mask1);
+
+    if (addr0 == addr1)
+    {
+        *conflict = true;
+    }
+
+    return CY_RSLT_SUCCESS;
+}
+
+/*
+ * cy_network_set_second_interface_address is used to update the IP address
+ * for the second network interface.
+ */
+cy_rslt_t cy_network_set_second_interface_address(ULONG ipaddr, ULONG netmask)
+{
+    NX_IP *ip;
+    UINT status;
+
+    if (intf_interface_index == 0)
+    {
+        /*
+         * Interface index 0 is always used for the STA interface. If the second interface
+         * index is 0 then the second interface hasn't been initialized.
+         */
+
+        return CY_RSLT_NETWORK_INTERFACE_DOES_NOT_EXIST;
+    }
+
+    /*
+     * Get the pointer to the IP instance.
+     */
+
+    ip = (NX_IP *)cy_network_get_nw_interface(CY_NETWORK_WIFI_STA_INTERFACE, 0);
+    if (ip == NULL)
+    {
+        return CY_RSLT_NETWORK_INTERFACE_NETWORK_NOT_UP;
+    }
+
+    /*
+     * Set the new IP address.
+     */
+
+    status = nx_ip_interface_address_set(ip, intf_interface_index, ipaddr, netmask);
+    if (status != NX_SUCCESS)
+    {
+        wm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Error setting interface address\n");
+        return CY_RSLT_NETWORK_INTERFACE_SET_ADDRESS;
     }
 
     return CY_RSLT_SUCCESS;

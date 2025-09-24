@@ -2,6 +2,7 @@ var group__group__netxduo__network__interface__integration =
 [
     [ "Enumerated Types", "group__group__netxduo__network__interface__integration__enums.html", "group__group__netxduo__network__interface__integration__enums" ],
     [ "Port Structures", "group__group__netxduo__network__interface__integration__structures.html", "group__group__netxduo__network__interface__integration__structures" ],
+    [ "Typedefs", "group__group__netxduo__network__interface__integration__typedefs.html", "group__group__netxduo__network__interface__integration__typedefs" ],
     [ "Port Functions", "group__group__netxduo__network__interface__integration__functions.html", "group__group__netxduo__network__interface__integration__functions" ],
     [ "Group_netxduo_network_interface_integration_macros", "group__group__netxduo__network__interface__integration__macros.html", "group__group__netxduo__network__interface__integration__macros" ],
     [ "cy_network_packet_type_t", "group__group__netxduo__network__interface__integration.html#ga4ad415e65fde2a7ffa5b1590502fe39b", [

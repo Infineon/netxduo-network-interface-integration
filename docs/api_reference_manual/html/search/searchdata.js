@@ -7,7 +7,7 @@ var indexSectionsWithContent =
   4: "c",
   5: "c",
   6: "c",
-  7: "cegnp",
+  7: "cegnpt",
   8: "o"
 };
 

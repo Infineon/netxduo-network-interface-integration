@@ -11,6 +11,11 @@ See the [README.md](./README.md) for a complete description of the [NetXDuo netw
 
 ## Changelog
 
+### v1.5.0
+
+- Add support for allocating SDIO DMA memory buffer for 55900 platforms.
+- Added support for second network interface attached to STA IP instance.
+
 ### v1.4.0
 
 - Update to speed up DHCP processing.

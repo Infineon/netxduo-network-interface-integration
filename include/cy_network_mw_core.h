@@ -1,5 +1,5 @@
 /*
- * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company) or
+ * Copyright 2025, Cypress Semiconductor Corporation (an Infineon company) or
  * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
@@ -38,6 +38,7 @@
 *
 * \defgroup group_netxduo_network_interface_integration_enums Enumerated Types
 * \defgroup group_netxduo_network_interface_integration_structures Port Structures
+* \defgroup group_netxduo_network_interface_integration_typedefs Typedefs
 * \defgroup group_netxduo_network_interface_integration_functions Port Functions
 */
 
@@ -153,6 +154,22 @@ typedef struct cy_network_packet_pool_info
 /** \} group_netxduo_network_interface_integration_structures */
 
 /**
+ * \addtogroup group_netxduo_network_interface_integration_typedefs
+ * \{
+ */
+
+/**
+ * Callback routine for processing TX packets emitted by the network stack
+ * for the second network interface.
+ *
+ * @param[in] packet_ptr    Pointer to the TX packet to be processed
+ * @param[in] user_data     Pointer to optional user data.
+ */
+typedef void (*cy_process_tx_packet_t)(NX_PACKET *packet_ptr, void *user_data);
+
+/** \} group_netxduo_network_interface_integration_typedefs */
+
+/**
  * Enumeration of network packet types
  */
 typedef enum
@@ -229,6 +246,14 @@ cy_rslt_t cy_network_remove_nw_interface(cy_network_interface_context *iface_con
  */
 void* cy_network_get_nw_interface(cy_network_hw_interface_type_t iface_type, uint8_t iface_idx);
 
+#if defined(COMPONENT_55900) && defined(COMPONENT_SDIO_HM_TRANSPORT)
+/**
+ * Return a pointer to memory allocated for the SDIO DMA memory.
+ *
+ * @return Pointer to memory allocated for the SDIO DMA memory, NULL if the network stack has not been initialized.
+ */
+void *cy_network_get_sdio_dma_memory(void);
+#endif
 /**
  * This function brings up the network link layer and
  * starts DHCP if required
@@ -432,7 +457,7 @@ cy_rslt_t cy_network_random_number_generate( unsigned char *output, size_t len, 
 #endif
 
 /**
- * Create the IP instance for the network interface,
+ * Create the IP instance for the network interface.
  *
  * @param[in]  iface_type      Network interface type \ref cy_network_hw_interface_type_t.
  * @param[in]  hw_interface    Handle to the already initialized HW interface.
@@ -441,6 +466,72 @@ cy_rslt_t cy_network_random_number_generate( unsigned char *output, size_t len, 
  * @return CY_RSLT_SUCCESS if successful, failure code otherwise.
  */
 cy_rslt_t cy_network_create_ip_instance(cy_network_hw_interface_type_t iface_type, void *hw_interface);
+
+/**
+ * Process a RX packet for the second network interface
+ *
+ * This function takes ethernet packets for the second network interface and passes them into
+ * the NetX Duo stack.  If the stack is not initialized, or if the NetX Duo stack does not
+ * accept the packet, the packet is freed (dropped).
+ *
+ * Note: NetX Duo has an architecture restriction where the location of the IP header in
+ * the packet must start on a 4 byte boundary.
+ *
+ * @param[in] packet_ptr            Pointer to the ethernet packet
+ */
+void cy_network_process_intf_ethernet_data(NX_PACKET *packet_ptr);
+
+/**
+ * Create a second network interface on the STA IP instance.
+ *
+ * The second network interface is intended for a point to point network link. It uses a static IP address
+ * along with static MAC addresses for the source and remote (destination) peer.
+ *
+ * This routine needs to be invoked before bringing up the STA interface via cy_wcm_connect_ap().
+ * cy_wcm_init() must be run prior to using this API.
+ *
+ * Note that this routine calls cy_network_create_ip_instance internally.
+ *
+ *
+ * @param[in]  name                 Name of the interface
+ * @param[in]  ipaddr               IP address to use for the second interface in host byte order
+ * @param[in]  netmask              Netmask for the second interface in host byte order
+ * @param[in]  src_mac              Mac address for the second interface
+ * @param[in]  dst_mac              Mac address of the remote peer
+ * @param[in]  process_tx_callback  Callback for invoked for processing TX packets emitted by the network stack
+ * @param[in]  user_data            Optional user pointer to be passed to process_tx_callback
+ *
+ * @return CY_RSLT_SUCCESS if successful, failure code otherwise.
+ */
+cy_rslt_t cy_network_create_second_interface(char *name, ULONG ipaddr, ULONG netmask,
+                                             uint8_t *src_mac, uint8_t *dst_mac,
+                                             cy_process_tx_packet_t process_tx_callback, void *user_data);
+
+/**
+ * Check for IP address conflict between the first and second network interfaces
+ * on the STA IP instance.
+ *
+ * The conflict flag will be set to true if both interfaces have been initialized
+ * and have the same IP address.
+ *
+ * @param[out]  conflict            Pointer to conflict status variable
+ *
+ * @return CY_RSLT_SUCCESS if successful, failure code otherwise.
+ */
+cy_rslt_t cy_network_check_second_interface_address_conflict(bool *conflict);
+
+/**
+ * Set the IP address for the second network interface.
+ *
+ * This routine is used to update the IP address used by the
+ * second network interface.
+ *
+ * @param[in]  ipaddr               IP address to use for the second interface in host byte order
+ * @param[in]  netmask              Netmask for the second interface in host byte order
+ *
+ * @return CY_RSLT_SUCCESS if successful, failure code otherwise.
+ */
+cy_rslt_t cy_network_set_second_interface_address(ULONG ipaddr, ULONG netmask);
 
 /** \} group_netxduo_network_interface_integration_functions */
 #ifdef __cplusplus

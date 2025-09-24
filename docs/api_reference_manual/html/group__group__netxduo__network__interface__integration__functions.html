@@ -161,8 +161,20 @@ Functions</h2></td></tr>
 <tr class="memdesc:ga94da6bdcf9e3dc0ea4157ac9f1233500"><td class="mdescLeft">&#160;</td><td class="mdescRight">This function returns a packet pool for the given packet direction.  <a href="group__group__netxduo__network__interface__integration__functions.html#ga94da6bdcf9e3dc0ea4157ac9f1233500">More...</a><br /></td></tr>
 <tr class="separator:ga94da6bdcf9e3dc0ea4157ac9f1233500"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gadffd5b457b63e0f237d37c37360d3b7b"><td class="memItemLeft" align="right" valign="top">cy_rslt_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__group__netxduo__network__interface__integration__functions.html#gadffd5b457b63e0f237d37c37360d3b7b">cy_network_create_ip_instance</a> (<a class="el" href="group__group__netxduo__network__interface__integration__enums.html#ga1609e48b69352ef0c60d2215ef6a2cef">cy_network_hw_interface_type_t</a> iface_type, void *hw_interface)</td></tr>
-<tr class="memdesc:gadffd5b457b63e0f237d37c37360d3b7b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create the IP instance for the network interface,.  <a href="group__group__netxduo__network__interface__integration__functions.html#gadffd5b457b63e0f237d37c37360d3b7b">More...</a><br /></td></tr>
+<tr class="memdesc:gadffd5b457b63e0f237d37c37360d3b7b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create the IP instance for the network interface.  <a href="group__group__netxduo__network__interface__integration__functions.html#gadffd5b457b63e0f237d37c37360d3b7b">More...</a><br /></td></tr>
 <tr class="separator:gadffd5b457b63e0f237d37c37360d3b7b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga07cb7461b3e9d58f0ac46118cc2de4df"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__group__netxduo__network__interface__integration__functions.html#ga07cb7461b3e9d58f0ac46118cc2de4df">cy_network_process_intf_ethernet_data</a> (NX_PACKET *packet_ptr)</td></tr>
+<tr class="memdesc:ga07cb7461b3e9d58f0ac46118cc2de4df"><td class="mdescLeft">&#160;</td><td class="mdescRight">Process a RX packet for the second network interface.  <a href="group__group__netxduo__network__interface__integration__functions.html#ga07cb7461b3e9d58f0ac46118cc2de4df">More...</a><br /></td></tr>
+<tr class="separator:ga07cb7461b3e9d58f0ac46118cc2de4df"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gae982868422919d5ab735bf52897cb600"><td class="memItemLeft" align="right" valign="top">cy_rslt_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__group__netxduo__network__interface__integration__functions.html#gae982868422919d5ab735bf52897cb600">cy_network_create_second_interface</a> (char *name, ULONG ipaddr, ULONG netmask, uint8_t *src_mac, uint8_t *dst_mac, <a class="el" href="group__group__netxduo__network__interface__integration__typedefs.html#ga6891c8ec084138f38bed33481ccedbc7">cy_process_tx_packet_t</a> process_tx_callback, void *user_data)</td></tr>
+<tr class="memdesc:gae982868422919d5ab735bf52897cb600"><td class="mdescLeft">&#160;</td><td class="mdescRight">Create a second network interface on the STA IP instance.  <a href="group__group__netxduo__network__interface__integration__functions.html#gae982868422919d5ab735bf52897cb600">More...</a><br /></td></tr>
+<tr class="separator:gae982868422919d5ab735bf52897cb600"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:gab266896e624dd42fecf9b0106ffb7689"><td class="memItemLeft" align="right" valign="top">cy_rslt_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__group__netxduo__network__interface__integration__functions.html#gab266896e624dd42fecf9b0106ffb7689">cy_network_check_second_interface_address_conflict</a> (bool *conflict)</td></tr>
+<tr class="memdesc:gab266896e624dd42fecf9b0106ffb7689"><td class="mdescLeft">&#160;</td><td class="mdescRight">Check for IP address conflict between the first and second network interfaces on the STA IP instance.  <a href="group__group__netxduo__network__interface__integration__functions.html#gab266896e624dd42fecf9b0106ffb7689">More...</a><br /></td></tr>
+<tr class="separator:gab266896e624dd42fecf9b0106ffb7689"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga48d2d09192e67f848802e9793cb66ab6"><td class="memItemLeft" align="right" valign="top">cy_rslt_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="group__group__netxduo__network__interface__integration__functions.html#ga48d2d09192e67f848802e9793cb66ab6">cy_network_set_second_interface_address</a> (ULONG ipaddr, ULONG netmask)</td></tr>
+<tr class="memdesc:ga48d2d09192e67f848802e9793cb66ab6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Set the IP address for the second network interface.  <a href="group__group__netxduo__network__interface__integration__functions.html#ga48d2d09192e67f848802e9793cb66ab6">More...</a><br /></td></tr>
+<tr class="separator:ga48d2d09192e67f848802e9793cb66ab6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Typedef Documentation</h2>
 <a id="ga63afa6bcbec8b99a8593ee788bbc2455" name="ga63afa6bcbec8b99a8593ee788bbc2455"></a>
@@ -905,11 +917,182 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Create the IP instance for the network interface,. </p>
+<p>Create the IP instance for the network interface. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">iface_type</td><td>Network interface type <a class="el" href="group__group__netxduo__network__interface__integration__enums.html#ga1609e48b69352ef0c60d2215ef6a2cef">cy_network_hw_interface_type_t</a>. </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">hw_interface</td><td>Handle to the already initialized HW interface. For example, whd_interface_t pointer that is initialized using cybsp_wifi_init_primary() function. Similarly for ethernet it can be ethernet interface pointer.</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>CY_RSLT_SUCCESS if successful, failure code otherwise. </dd></dl>
+
+</div>
+</div>
+<a id="ga07cb7461b3e9d58f0ac46118cc2de4df" name="ga07cb7461b3e9d58f0ac46118cc2de4df"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga07cb7461b3e9d58f0ac46118cc2de4df">&#9670;&nbsp;</a></span>cy_network_process_intf_ethernet_data()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void cy_network_process_intf_ethernet_data </td>
+          <td>(</td>
+          <td class="paramtype">NX_PACKET *&#160;</td>
+          <td class="paramname"><em>packet_ptr</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Process a RX packet for the second network interface. </p>
+<p >This function takes ethernet packets for the second network interface and passes them into the NetX Duo stack. If the stack is not initialized, or if the NetX Duo stack does not accept the packet, the packet is freed (dropped).</p>
+<p >Note: NetX Duo has an architecture restriction where the location of the IP header in the packet must start on a 4 byte boundary.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">packet_ptr</td><td>Pointer to the ethernet packet </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="gae982868422919d5ab735bf52897cb600" name="gae982868422919d5ab735bf52897cb600"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gae982868422919d5ab735bf52897cb600">&#9670;&nbsp;</a></span>cy_network_create_second_interface()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">cy_rslt_t cy_network_create_second_interface </td>
+          <td>(</td>
+          <td class="paramtype">char *&#160;</td>
+          <td class="paramname"><em>name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">ULONG&#160;</td>
+          <td class="paramname"><em>ipaddr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">ULONG&#160;</td>
+          <td class="paramname"><em>netmask</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>src_mac</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint8_t *&#160;</td>
+          <td class="paramname"><em>dst_mac</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="group__group__netxduo__network__interface__integration__typedefs.html#ga6891c8ec084138f38bed33481ccedbc7">cy_process_tx_packet_t</a>&#160;</td>
+          <td class="paramname"><em>process_tx_callback</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">void *&#160;</td>
+          <td class="paramname"><em>user_data</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Create a second network interface on the STA IP instance. </p>
+<p >The second network interface is intended for a point to point network link. It uses a static IP address along with static MAC addresses for the source and remote (destination) peer.</p>
+<p >This routine needs to be invoked before bringing up the STA interface via cy_wcm_connect_ap(). cy_wcm_init() must be run prior to using this API.</p>
+<p >Note that this routine calls cy_network_create_ip_instance internally.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">name</td><td>Name of the interface </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">ipaddr</td><td>IP address to use for the second interface in host byte order </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">netmask</td><td>Netmask for the second interface in host byte order </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">src_mac</td><td>Mac address for the second interface </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">dst_mac</td><td>Mac address of the remote peer </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">process_tx_callback</td><td>Callback for invoked for processing TX packets emitted by the network stack </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">user_data</td><td>Optional user pointer to be passed to process_tx_callback</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>CY_RSLT_SUCCESS if successful, failure code otherwise. </dd></dl>
+
+</div>
+</div>
+<a id="gab266896e624dd42fecf9b0106ffb7689" name="gab266896e624dd42fecf9b0106ffb7689"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#gab266896e624dd42fecf9b0106ffb7689">&#9670;&nbsp;</a></span>cy_network_check_second_interface_address_conflict()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">cy_rslt_t cy_network_check_second_interface_address_conflict </td>
+          <td>(</td>
+          <td class="paramtype">bool *&#160;</td>
+          <td class="paramname"><em>conflict</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Check for IP address conflict between the first and second network interfaces on the STA IP instance. </p>
+<p >The conflict flag will be set to true if both interfaces have been initialized and have the same IP address.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[out]</td><td class="paramname">conflict</td><td>Pointer to conflict status variable</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>CY_RSLT_SUCCESS if successful, failure code otherwise. </dd></dl>
+
+</div>
+</div>
+<a id="ga48d2d09192e67f848802e9793cb66ab6" name="ga48d2d09192e67f848802e9793cb66ab6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ga48d2d09192e67f848802e9793cb66ab6">&#9670;&nbsp;</a></span>cy_network_set_second_interface_address()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">cy_rslt_t cy_network_set_second_interface_address </td>
+          <td>(</td>
+          <td class="paramtype">ULONG&#160;</td>
+          <td class="paramname"><em>ipaddr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">ULONG&#160;</td>
+          <td class="paramname"><em>netmask</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Set the IP address for the second network interface. </p>
+<p >This routine is used to update the IP address used by the second network interface.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">ipaddr</td><td>IP address to use for the second interface in host byte order </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">netmask</td><td>Netmask for the second interface in host byte order</td></tr>
   </table>
   </dd>
 </dl>
